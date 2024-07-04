@@ -1,0 +1,10 @@
+[package]
+name = "echocache"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio.workspace = true
+futures.workspace = true
+parking_lot.workspace = true
+tracing.workspace = true

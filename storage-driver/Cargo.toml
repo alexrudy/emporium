@@ -1,0 +1,17 @@
+[package]
+name = "storage-driver"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait.workspace = true
+camino.workspace = true
+chrono.workspace = true
+eyre.workspace = true
+http.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+static_assertions.workspace = true

@@ -1,0 +1,37 @@
+[package]
+name = "b2-client"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+api-client = { path = "../api-client" }
+arc-swap.workspace = true
+async-trait.workspace = true
+bytes.workspace = true
+camino.workspace = true
+chrono.workspace = true
+dashmap.workspace = true
+echocache = { path = "../echocache" }
+eyre.workspace = true
+futures.workspace = true
+hex.workspace = true
+http.workspace = true
+http-body.workspace = true
+http-body-util.workspace = true
+hyperdriver.workspace = true
+mime.workspace = true
+percent-encoding.workspace = true
+sentry.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha1.workspace = true
+storage-driver.path = "../storage-driver"
+thiserror.workspace = true
+tokio = { workspace = true, features = ["io-util", "fs"] }
+tokio-util = { workspace = true, features = ["io"] }
+tower.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }
+tracing-subscriber.workspace = true
