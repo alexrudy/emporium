@@ -52,9 +52,9 @@ name = "api-client"
 version = "0.1.0"
 dependencies = [
  "arc-swap",
- "async-trait",
- "base64 0.21.7",
+ "base64",
  "bytes",
+ "camino",
  "futures",
  "http",
  "http-body-util",
@@ -63,12 +63,10 @@ dependencies = [
  "secret",
  "serde",
  "serde_json",
- "serde_urlencoded",
  "thiserror",
  "tokio",
  "tower",
  "tracing",
- "zeroize",
 ]
 
 [[package]]
@@ -110,13 +108,12 @@ dependencies = [
  "bytes",
  "camino",
  "chrono",
- "dashmap 5.5.3",
+ "dashmap",
  "echocache",
  "eyre",
  "futures",
  "hex",
  "http",
- "http-body",
  "http-body-util",
  "hyperdriver",
  "mime",
@@ -148,12 +145,6 @@ dependencies = [
  "object",
  "rustc-demangle",
 ]
-
-[[package]]
-name = "base64"
-version = "0.21.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d297deb1925b89f2ccc13d7635fa0714f12c87adce1c75356b39ca9b7178567"
 
 [[package]]
 name = "base64"
@@ -262,19 +253,6 @@ checksum = "1bfb12502f3fc46cca1bb51ac28df9d618d813cdc3d2f25b9fe775a34af26bb3"
 dependencies = [
  "generic-array",
  "typenum",
-]
-
-[[package]]
-name = "dashmap"
-version = "5.5.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "978747c1d849a7d2ee5e8adc0159961c48fb7e5db2f06af6723b80123bb53856"
-dependencies = [
- "cfg-if",
- "hashbrown",
- "lock_api",
- "once_cell",
- "parking_lot_core",
 ]
 
 [[package]]
@@ -689,7 +667,7 @@ version = "0.4.4"
 dependencies = [
  "bytes",
  "camino",
- "dashmap 6.0.1",
+ "dashmap",
  "futures-core",
  "futures-util",
  "http",
@@ -1226,7 +1204,7 @@ version = "0.12.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c7d6d2a27d57148378eb5e111173f4276ad26340ecc5c49a4a2152167a2d6a37"
 dependencies = [
- "base64 0.22.1",
+ "base64",
  "bytes",
  "futures-channel",
  "futures-core",
@@ -1310,6 +1288,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "05cff451f60db80f490f3c182b77c35260baace73209e9cdbbe526bfe3a4d402"
 dependencies = [
  "once_cell",
+ "ring",
  "rustls-pki-types",
  "rustls-webpki",
  "subtle",
@@ -1335,7 +1314,7 @@ version = "2.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29993a25686778eb88d4189742cd713c9bce943bc54251a33509dc63cbacf73d"
 dependencies = [
- "base64 0.22.1",
+ "base64",
  "rustls-pki-types",
 ]
 
@@ -2016,7 +1995,7 @@ version = "2.9.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d11a831e3c0b56e438a28308e7c810799e3c118417f342d30ecec080105395cd"
 dependencies = [
- "base64 0.22.1",
+ "base64",
  "log",
  "native-tls",
  "once_cell",

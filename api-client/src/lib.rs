@@ -27,6 +27,7 @@ pub use self::request::RequestBuilder;
 pub use self::request::RequestExt;
 use self::response::ApiResponse;
 pub use self::retry::{Attempts, Backoff};
+use self::uri::UriExtension as _;
 
 pub type ApiService = BoxCloneService<
     hyperdriver::body::Request,
@@ -113,37 +114,27 @@ impl ApiClient<BearerAuth> {
     }
 }
 
-fn join(uri: Uri, path: &str) -> Uri {
-    let mut parts = uri.into_parts();
-    let path_and_query = parts.path_and_query.as_ref().map(|pq| {
-        let path = format!("{}/{}", pq.path(), path);
-        http::uri::PathAndQuery::from_maybe_shared(path).unwrap()
-    });
-    parts.path_and_query = path_and_query;
-    Uri::from_parts(parts).unwrap()
-}
-
 impl<A> ApiClient<A>
 where
     A: Authentication,
 {
     pub fn get(&self, endpoint: &str) -> RequestBuilder<A> {
-        let url = join((*self.base.load_full()).clone(), endpoint);
+        let url = (*self.base.load_full()).clone().join(endpoint);
         RequestBuilder::new(self.clone(), url, Method::GET)
     }
 
     pub fn put(&self, endpoint: &str) -> RequestBuilder<A> {
-        let url = join((*self.base.load_full()).clone(), endpoint);
+        let url = (*self.base.load_full()).clone().join(endpoint);
         RequestBuilder::new(self.clone(), url, Method::PUT)
     }
 
     pub fn post(&self, endpoint: &str) -> RequestBuilder<A> {
-        let url = join((*self.base.load_full()).clone(), endpoint);
+        let url = (*self.base.load_full()).clone().join(endpoint);
         RequestBuilder::new(self.clone(), url, Method::POST)
     }
 
     pub fn delete(&self, endpoint: &str) -> RequestBuilder<A> {
-        let url = join((*self.base.load_full()).clone(), endpoint);
+        let url = (*self.base.load_full()).clone().join(endpoint);
         RequestBuilder::new(self.clone(), url, Method::DELETE)
     }
 

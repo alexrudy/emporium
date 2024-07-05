@@ -2,22 +2,23 @@
 name = "storage"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
 
 [dependencies]
 async-trait.workspace = true
-b2-client.path = "../b2-client"
+b2-client = { path = "../b2-client", optional = true }
 camino = { workspace = true, features = ["serde1"] }
 chrono.workspace = true
 eyre.workspace = true
 http.workspace = true
 serde.workspace = true
 storage-driver.path = "../storage-driver"
-tokio = { workspace = true, optional = true, features = ["sync"] }
+tokio = { workspace = true, features = ["sync", "io-util"] }
 tracing.workspace = true
 tempfile = { workspace = true, optional = true }
 
 [features]
 default = ["b2", "local"]
-b2 = []
+b2 = ["dep:b2-client"]
 local = ["tokio/fs"]
-tmp = ["tokio/fs"]
+tmp = ["local", "tokio/fs", "dep:tempfile"]

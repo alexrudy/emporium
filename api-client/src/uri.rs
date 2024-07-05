@@ -1,3 +1,4 @@
+use camino::Utf8Path;
 use http::Uri;
 
 pub mod serde {
@@ -27,10 +28,63 @@ pub trait UriExtension {
 impl UriExtension for Uri {
     fn join<P: AsRef<str>>(self, path: P) -> Uri {
         let mut parts = self.into_parts();
+
         parts.path_and_query = parts.path_and_query.as_ref().map(|pq| {
-            let path = format!("{}/{}", pq.path(), path.as_ref());
-            http::uri::PathAndQuery::from_maybe_shared(path).unwrap()
+            let joined = Utf8Path::new(pq.path()).join(path.as_ref());
+            http::uri::PathAndQuery::from_maybe_shared(joined.to_string()).unwrap()
         });
         Uri::from_parts(parts).unwrap()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    fn test_uri_join() {
+        let uri = "http://example.com".parse::<Uri>().unwrap();
+        let joined = uri.join("foo");
+        assert_eq!(joined.to_string(), "http://example.com/foo");
+
+        let uri = "http://example.com/".parse::<Uri>().unwrap();
+        let joined = uri.join("foo");
+        assert_eq!(joined.to_string(), "http://example.com/foo");
+
+        let uri = "http://example.com/bar".parse::<Uri>().unwrap();
+        let joined = uri.join("foo");
+        assert_eq!(joined.to_string(), "http://example.com/bar/foo");
+
+        let uri = "http://example.com/bar/".parse::<Uri>().unwrap();
+        let joined = uri.join("foo");
+        assert_eq!(joined.to_string(), "http://example.com/bar/foo");
+
+        let uri = "http://example.com/bar".parse::<Uri>().unwrap();
+        let joined = uri.join("/foo");
+        assert_eq!(joined.to_string(), "http://example.com/foo");
+
+        let uri = "http://example.com/bar/".parse::<Uri>().unwrap();
+        let joined = uri.join("/foo");
+        assert_eq!(joined.to_string(), "http://example.com/foo");
+    }
+
+    #[test]
+    fn test_uri_join_empty() {
+        let uri = "http://example.com".parse::<Uri>().unwrap();
+        let joined = uri.join("");
+        assert_eq!(joined.to_string(), "http://example.com/");
+
+        let uri = "http://example.com/".parse::<Uri>().unwrap();
+        let joined = uri.join("");
+        assert_eq!(joined.to_string(), "http://example.com/");
+
+        let uri = "http://example.com/bar".parse::<Uri>().unwrap();
+        let joined = uri.join("");
+        assert_eq!(joined.to_string(), "http://example.com/bar/");
+
+        let uri = "http://example.com/bar/".parse::<Uri>().unwrap();
+        let joined = uri.join("");
+        assert_eq!(joined.to_string(), "http://example.com/bar/");
     }
 }

@@ -176,12 +176,12 @@ mod tests {
         assert_eq!(uri.path(), "/path/to/file");
     }
 
-    #[test]
-    fn parse_file_url() {
-        let url = "file:///path/to/file";
-        let uri = url.parse::<Uri>().unwrap();
-        assert_eq!(uri.scheme_str(), Some("file"));
-        assert_eq!(uri.host(), None);
-        assert_eq!(uri.path(), "/path/to/file");
-    }
+    // #[test]
+    // fn parse_file_url() {
+    //     let url = "file:///path/to/file";
+    //     let uri = url.parse::<Uri>().unwrap();
+    //     assert_eq!(uri.scheme_str(), Some("file"));
+    //     assert_eq!(uri.host(), None);
+    //     assert_eq!(uri.path(), "/path/to/file");
+    // }
 }

@@ -4,7 +4,10 @@
 
 use std::sync::Arc;
 
-use camino::{Utf8Path, Utf8PathBuf};
+use camino::Utf8Path;
+#[cfg(feature = "local")]
+use camino::Utf8PathBuf;
+#[cfg(feature = "b2")]
 use eyre::Context;
 use serde::Deserialize;
 

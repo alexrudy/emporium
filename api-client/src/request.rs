@@ -164,7 +164,7 @@ impl<A> RequestBuilder<A> {
         if let Some(timeout) = self.timeout {
             match tokio::time::timeout(timeout, self.client.execute(req)).await {
                 Ok(res) => Ok(res?),
-                Err(_) => return Err("Request timed out".into()),
+                Err(_) => Err("Request timed out".into()),
             }
         } else {
             Ok(self.client.execute(req).await?)

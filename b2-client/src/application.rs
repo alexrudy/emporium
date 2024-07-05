@@ -139,7 +139,7 @@ impl B2Authorization {
     }
 
     fn endpoint(&self, name: &str) -> Uri {
-        self.api_url.clone().join(&format!("b2api/v2/{name}"))
+        self.api_url.clone().join(format!("b2api/v2/{name}"))
     }
 
     fn authorize(&self, req: &mut Request<Body>) {

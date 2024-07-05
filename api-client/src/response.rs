@@ -84,7 +84,7 @@ mod futures {
     impl<T> From<Bytes> for Json<T> {
         fn from(bytes: Bytes) -> Self {
             Self {
-                inner: Bytes::from(bytes),
+                inner: bytes,
                 _phantom: std::marker::PhantomData,
             }
         }

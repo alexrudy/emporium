@@ -2,13 +2,14 @@
 name = "b2-client"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
 
 [dependencies]
 api-client = { path = "../api-client" }
 arc-swap.workspace = true
 async-trait.workspace = true
 bytes.workspace = true
-camino.workspace = true
+camino = { workspace = true, features = ["serde1"] }
 chrono.workspace = true
 dashmap.workspace = true
 echocache = { path = "../echocache" }
@@ -16,7 +17,6 @@ eyre.workspace = true
 futures.workspace = true
 hex.workspace = true
 http.workspace = true
-http-body.workspace = true
 http-body-util.workspace = true
 hyperdriver.workspace = true
 mime.workspace = true
