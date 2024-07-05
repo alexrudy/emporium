@@ -42,8 +42,7 @@ tracing = "0.1"
 zeroize = "1"
 
 [workspace.dependencies.hyperdriver]
-# git = "https://github.com/alexrudy/hyperdriver.git"
-path = "/Users/alexrudy/Development/alexrudy/hyperdriver/"
+git = "https://github.com/alexrudy/hyperdriver.git"
 features = ["stream", "tls", "server", "client", "discovery", "incoming", "sni"]
 
 [workspace.dependencies.tokio]
