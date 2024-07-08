@@ -664,7 +664,7 @@ dependencies = [
 [[package]]
 name = "hyperdriver"
 version = "0.5.0"
-source = "git+https://github.com/alexrudy/hyperdriver.git#f3f414cfe7518dc6f9d5116895eddaa4024b1901"
+source = "git+https://github.com/alexrudy/hyperdriver.git?branch=client/common-error-type#f0c959eecca3c03360ad0d91286de1e5bd0d71e3"
 dependencies = [
  "bytes",
  "camino",

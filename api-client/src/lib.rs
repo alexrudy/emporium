@@ -153,7 +153,6 @@ pub mod mock {
     use bytes::Bytes;
     use http::response;
     use std::collections::HashMap;
-    use tower::BoxError;
 
     #[derive(Debug, Clone)]
     pub struct MockResponse {
@@ -198,7 +197,7 @@ pub mod mock {
 
     impl tower::Service<hyperdriver::body::Request> for MockService {
         type Response = hyperdriver::body::Response;
-        type Error = BoxError;
+        type Error = hyperdriver::client::Error;
         type Future = std::future::Ready<Result<Self::Response, Self::Error>>;
 
         fn poll_ready(
@@ -237,8 +236,6 @@ pub mod mock {
 #[cfg(test)]
 mod test {
 
-    use hyperdriver::client::DowncastError;
-
     use self::response::ResponseExt as _;
 
     use super::*;
@@ -270,7 +267,7 @@ mod test {
         let client = ApiClient::new_with_inner_service(
             "http://httpbin.org/get/".parse().unwrap(),
             BearerAuth::new(Secret::from("secret garden")),
-            DowncastError::new(mock),
+            mock,
         );
 
         let response = client.get("").send().await.unwrap();

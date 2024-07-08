@@ -265,7 +265,6 @@ impl B2Client {
 
 #[cfg(test)]
 mod tests {
-    use hyperdriver::client::DowncastError;
     use hyperdriver::service::SharedService;
     use serde_json::json;
 
@@ -296,7 +295,7 @@ mod tests {
         );
 
         let client = B2Client::from_client_and_authorization(
-            SharedService::new(DowncastError::new(mock)),
+            SharedService::new(mock),
             B2Authorization::test(),
             B2ApplicationKey::test(),
         );

@@ -43,6 +43,7 @@ zeroize = "1"
 
 [workspace.dependencies.hyperdriver]
 git = "https://github.com/alexrudy/hyperdriver.git"
+branch = "client/common-error-type"
 features = ["stream", "tls", "server", "client", "discovery", "incoming", "sni"]
 
 [workspace.dependencies.tokio]
