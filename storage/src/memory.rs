@@ -37,16 +37,19 @@ impl From<&MemoryFileItem> for Metadata {
     }
 }
 
+/// Storage driver that stores files in memory.
 #[derive(Debug, Default)]
 pub struct MemoryStorage {
     buckets: RwLock<HashMap<String, HashMap<Utf8PathBuf, MemoryFileItem>>>,
 }
 
 impl MemoryStorage {
+    /// Create a new `MemoryStorage` instance, with no buckets.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Create a new `MemoryStorage` instance, with the given buckets.
     pub fn with_buckets(buckets: &[&str]) -> Self {
         let mut map = HashMap::new();
         for bucket in buckets {
@@ -58,6 +61,7 @@ impl MemoryStorage {
         }
     }
 
+    /// Create a new bucket in the storage.
     pub async fn create_bucket(&self, bucket: String) {
         let mut buckets = self.buckets.write().await;
         buckets.insert(bucket, HashMap::new());

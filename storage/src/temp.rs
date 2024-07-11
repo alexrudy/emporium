@@ -5,6 +5,7 @@ use tempfile::TempDir;
 use crate::local::LocalDriver;
 use storage_driver::{Driver, Metadata, Reader, StorageError, Writer};
 
+/// A storage driver that stores files in a temporary directory.
 #[derive(Debug)]
 pub struct TempDriver {
     #[allow(unused)]
@@ -19,6 +20,7 @@ impl Default for TempDriver {
 }
 
 impl TempDriver {
+    /// Create a new `TempDriver` instance, storing files in a temporary directory.
     pub fn new() -> eyre::Result<Self> {
         let tmp = TempDir::new().wrap_err("create temporary directory")?;
         let root = Utf8Path::from_path(tmp.path())

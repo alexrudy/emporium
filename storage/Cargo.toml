@@ -22,3 +22,6 @@ default = ["b2", "local"]
 b2 = ["dep:b2-client"]
 local = ["tokio/fs"]
 tmp = ["local", "tokio/fs", "dep:tempfile"]
+
+[lints]
+workspace = true

@@ -35,33 +35,43 @@ pub use temp::TempDriver;
 #[doc(inline)]
 pub use storage_driver::{Driver, Metadata, StorageError};
 
+/// Configuration for the storage backend, used to create a [`Storage`] instance.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum StorageConfig {
+    /// In-memory storage backend.
     Memory {
+        /// The name of the bucket.
         bucket: String,
     },
 
+    /// Local storage backend.
     #[cfg(feature = "local")]
     Local {
+        /// The path to the local storage directory.
         path: Utf8PathBuf,
     },
 
+    /// Temporary storage backend.
     #[cfg(feature = "tmp")]
     Temp,
 
+    /// Backblaze B2 storage backend.
     #[cfg(feature = "b2")]
     B2(b2_client::B2ApplicationKey),
 
+    /// Backblaze B2 storage backend, using environment variables for configuration.
     #[cfg(feature = "b2")]
     #[serde(alias = "b2env")]
     B2Env,
 
+    /// Backblaze B2 storage backend, using multiple accounts to access multiple buckets.
     #[cfg(feature = "b2")]
     B2Multi(b2_client::B2MultiConfig),
 }
 
 impl StorageConfig {
+    /// Build a [`Storage`] instance from the configuration.
     #[tracing::instrument]
     pub async fn build(self) -> Result<Storage, StorageError> {
         let client: Storage = match self {
@@ -99,6 +109,7 @@ use tokio::io;
 
 pub(crate) type ArcDriver = Arc<dyn Driver + Send + Sync>;
 
+/// Storage API client, wrapping a [`Driver`] implementation.
 #[derive(Debug, Clone)]
 pub struct Storage {
     driver: ArcDriver,
@@ -114,16 +125,19 @@ where
 }
 
 impl Storage {
+    /// Directly create a new storage client from a driver.
     pub fn new<D: Driver + Send + Sync + 'static>(driver: D) -> Self {
         Self {
             driver: Arc::new(driver),
         }
     }
 
+    /// Get the name of the driver.
     pub fn name(&self) -> &str {
         self.driver.name()
     }
 
+    /// Get a bucket-specific storage client.
     pub fn bucket<S: Into<String>>(&self, bucket: S) -> StorageBucket {
         StorageBucket {
             driver: self.driver.clone(),
@@ -131,6 +145,7 @@ impl Storage {
         }
     }
 
+    /// Get file metadata.
     #[tracing::instrument(skip(self), fields(driver=self.driver.name()))]
     pub async fn metadata(
         &self,
@@ -140,6 +155,7 @@ impl Storage {
         self.driver.metadata(bucket, remote).await
     }
 
+    /// Download a file to a writer.
     #[tracing::instrument(skip(self, writer), fields(driver=self.driver.name()))]
     pub async fn download<'d, W>(
         &'d self,
@@ -155,6 +171,7 @@ impl Storage {
         Ok(())
     }
 
+    /// Upload a file from a reader.
     #[tracing::instrument(skip(self, reader), fields(driver=self.driver.name(), bucket))]
     pub async fn upload<'d, R>(
         &'d self,
@@ -170,6 +187,7 @@ impl Storage {
         Ok(())
     }
 
+    /// Upload a file from a local path.
     pub async fn upload_file(
         &self,
         bucket: &str,
@@ -180,6 +198,7 @@ impl Storage {
         self.driver.upload_file(bucket, remote, local).await
     }
 
+    /// Download a file to a local path.
     pub async fn download_file(
         &self,
         bucket: &str,
@@ -190,6 +209,7 @@ impl Storage {
         self.driver.download_file(bucket, remote, local).await
     }
 
+    /// List files in a bucket.
     #[tracing::instrument(skip(self), fields(driver=self.driver.name(), bucket))]
     pub async fn list(
         &self,
@@ -199,28 +219,34 @@ impl Storage {
         self.driver.list(bucket, prefix).await
     }
 
+    /// Delete a file.
     #[tracing::instrument(skip(self), fields(driver=self.driver.name()))]
     pub async fn delete(&self, bucket: &str, path: &Utf8Path) -> Result<(), StorageError> {
         self.driver.delete(bucket, path).await
     }
 
+    /// Get a storage driver which accepts URIs.
     pub fn uri(&self) -> DriverUri<ArcDriver> {
         DriverUri::new(self.driver.clone())
     }
 }
 
+/// Bucket-specific storage client, wrapping a [`Driver`] implementation.
 #[derive(Debug, Clone)]
 pub struct StorageBucket {
+    /// The bucket name.
     pub bucket: String,
     driver: Arc<dyn Driver + Send + Sync + 'static>,
 }
 
 impl StorageBucket {
+    /// Get file metadata.
     #[tracing::instrument(skip(self), fields(driver=self.driver.name()))]
     pub async fn metadata(&self, remote: &Utf8Path) -> Result<Metadata, StorageError> {
         self.driver.metadata(&self.bucket, remote).await
     }
 
+    /// Download a file to a writer.
     #[tracing::instrument(skip(self, writer), fields(driver=self.driver.name()))]
     pub async fn download<'d, W>(
         &'d self,
@@ -235,6 +261,7 @@ impl StorageBucket {
         Ok(())
     }
 
+    /// Upload a file from a reader.
     #[tracing::instrument(skip(self, reader), fields(driver=self.driver.name(), bucket=self.bucket))]
     pub async fn upload<'d, R>(
         &'d self,
@@ -249,6 +276,7 @@ impl StorageBucket {
         Ok(())
     }
 
+    /// Upload a file from a local path.
     pub async fn upload_file(
         &self,
         remote: &Utf8Path,
@@ -257,6 +285,7 @@ impl StorageBucket {
         self.driver.upload_file(&self.bucket, remote, local).await
     }
 
+    /// Download a file to a local path.
     pub async fn download_file(
         &self,
         remote: &Utf8Path,
@@ -265,11 +294,13 @@ impl StorageBucket {
         self.driver.download_file(&self.bucket, remote, local).await
     }
 
+    /// List files in a bucket.
     #[tracing::instrument(skip(self), fields(driver=self.driver.name(), bucket=self.bucket))]
     pub async fn list(&self, prefix: Option<&Utf8Path>) -> Result<Vec<String>, StorageError> {
         self.driver.list(&self.bucket, prefix).await
     }
 
+    /// Delete a file.
     #[tracing::instrument(skip(self), fields(driver=self.driver.name(), bucket=self.bucket))]
     pub async fn delete(&self, path: &Utf8Path) -> Result<(), StorageError> {
         self.driver.delete(&self.bucket, path).await

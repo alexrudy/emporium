@@ -5,12 +5,14 @@ use tracing::Instrument;
 
 use storage_driver::{Driver, Metadata, Reader, StorageError, Writer};
 
+/// A storage driver that stores files on the local filesystem.
 #[derive(Debug)]
 pub struct LocalDriver {
     root: Utf8PathBuf,
 }
 
 impl LocalDriver {
+    /// Create a new `LocalDriver` instance, storing files in the given directory.
     pub fn new(root: Utf8PathBuf) -> Self {
         Self { root }
     }

@@ -1,3 +1,6 @@
+//! A storage backend that can use multiple drivers based on the URI scheme,
+//! and possibly the bucket.
+
 #![allow(clippy::needless_pass_by_ref_mut)]
 use std::collections::HashMap;
 
@@ -15,13 +18,15 @@ struct Key {
     bucket: Option<String>,
 }
 
+/// A storage backend that can use multiple drivers based on the URI scheme,
+/// and possibly the bucket.
 #[derive(Debug, Default)]
 pub struct MultiStorage {
     drivers: HashMap<Key, Storage>,
 }
 
-macro_rules! file {
-    ($this:ident,$method:ident($url:expr)) => {
+macro_rules! forward_driver {
+    ($this:ident.$method:ident($url:expr)) => {
         async {
             if $url.scheme_str() == Some("file") {
                 return DriverUri::file().$method($url).await;
@@ -35,7 +40,7 @@ macro_rules! file {
     };
 
 
-    ($this:ident,$method:ident($url:expr, $($args:expr),+)) => {
+    ($this:ident.$method:ident($url:expr, $($args:expr),+)) => {
         async {
             if $url.scheme_str() == Some("file") {
                 return DriverUri::file().$method($url,$($args),+).await;
@@ -52,12 +57,15 @@ macro_rules! file {
 }
 
 impl MultiStorage {
+    /// Create a new `MultiStorage` instance, with no drivers.
     pub fn new() -> Self {
         Self {
             drivers: HashMap::new(),
         }
     }
 
+    /// Add a new driver to the storage backend, applicable to all URIs with the
+    /// same scheme.
     pub fn add<D>(&mut self, driver: D)
     where
         D: Driver + Send + Sync + 'static,
@@ -72,6 +80,7 @@ impl MultiStorage {
         );
     }
 
+    /// Get a driver for the given URI.
     pub fn get(&self, uri: &Uri) -> Result<Option<&Storage>, StorageError> {
         let bucket = uri.host();
 
@@ -92,38 +101,45 @@ impl MultiStorage {
         Ok(None)
     }
 
+    /// Get file metadata.
     pub async fn metadata(&self, uri: &Uri) -> Result<Metadata, StorageError> {
-        file!(self, metadata(uri)).await
+        forward_driver!(self.metadata(uri)).await
     }
 
+    /// Download a file to a writer.
     pub async fn download<'d, W>(&'d self, uri: &Uri, writer: &mut W) -> Result<(), StorageError>
     where
         W: io::AsyncWrite + Unpin + Send + Sync + 'd,
     {
-        file!(self, download(uri, writer)).await
+        forward_driver!(self.download(uri, writer)).await
     }
 
+    /// Upload a file from a reader.
     pub async fn upload<'d, R>(&'d self, uri: &Uri, reader: &mut R) -> Result<(), StorageError>
     where
         R: io::AsyncBufRead + Unpin + Send + Sync + 'd,
     {
-        file!(self, upload(uri, reader)).await
+        forward_driver!(self.upload(uri, reader)).await
     }
 
+    /// Upload a file from a reader.
     pub async fn upload_file(&self, uri: &Uri, local: &Utf8Path) -> Result<(), StorageError> {
-        file!(self, upload_file(uri, local)).await
+        forward_driver!(self.upload_file(uri, local)).await
     }
 
+    /// Download a file to a local path.
     pub async fn download_file(&self, uri: &Uri, local: &Utf8Path) -> Result<(), StorageError> {
-        file!(self, download_file(uri, local)).await
+        forward_driver!(self.download_file(uri, local)).await
     }
 
+    /// List files in a directory.
     pub async fn list(&self, uri: &Uri) -> Result<Vec<String>, StorageError> {
-        file!(self, list(uri)).await
+        forward_driver!(self.list(uri)).await
     }
 
+    /// Delete a file.
     pub async fn delete(&self, uri: &Uri) -> Result<(), StorageError> {
-        file!(self, delete(uri)).await
+        forward_driver!(self.delete(uri)).await
     }
 }
 
