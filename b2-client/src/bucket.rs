@@ -158,6 +158,7 @@ struct FileListResponse {
 }
 
 impl B2Client {
+    /// Get a bucket by name.
     #[tracing::instrument(skip(self))]
     pub async fn get_bucket(&self, name: &str) -> Result<Bucket, Arc<B2RequestError>> {
         let cache = if let Some(cache) = { self.buckets.get(name).map(|r| r.value().clone()) } {
@@ -189,6 +190,7 @@ impl B2Client {
             .await
     }
 
+    /// List all buckets with the B2 API
     #[tracing::instrument(skip_all)]
     pub(crate) async fn b2_list_buckets<L: Into<SelectBucket>>(
         &self,
@@ -227,6 +229,7 @@ impl B2Client {
         Ok(buckets.buckets)
     }
 
+    /// List all file names with the B2 API
     #[tracing::instrument(skip_all, fields(bucket=%bucket.as_ref()))]
     pub(crate) async fn b2_list_file_names<B: AsRef<BucketID>>(
         &self,

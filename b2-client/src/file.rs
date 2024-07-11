@@ -120,6 +120,7 @@ impl B2Client {
         Ok(())
     }
 
+    /// Delete a file from a bucket.
     #[tracing::instrument(skip(self, bucket), fields(bucket=%bucket.as_ref()))]
     pub async fn delete_file<B: AsRef<BucketID>>(
         &self,
@@ -132,12 +133,19 @@ impl B2Client {
 
         if files.is_empty() {
             tracing::warn!("No files found to delete");
+            return Ok(());
         }
-        //TODO: Consider parallelizing this?
-        for file in files.into_iter().filter(|file| file.path() == name) {
-            tracing::trace!(id = ?file.id(), "Deleting file");
-            self.b2_delete_file_version(file.path(), file.id()).await?;
-        }
+
+        futures::future::try_join_all(files.into_iter().filter(|file| file.path() == name).map(
+            |file| {
+                Box::pin(async move {
+                    tracing::trace!(id = ?file.id(), "Deleting file");
+                    self.b2_delete_file_version(file.path(), file.id()).await?;
+                    Ok::<_, B2RequestError>(())
+                })
+            },
+        ))
+        .await?;
 
         Ok(())
     }

@@ -1,3 +1,5 @@
+//! Backblaze B2 Storage Driver
+
 mod application;
 mod bucket;
 mod client;

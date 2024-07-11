@@ -545,6 +545,7 @@ impl B2Client {
         Ok(())
     }
 
+    /// Upload a large file using the B2 API
     #[tracing::instrument(skip_all, fields(%bucket, remote=%filename.file_name().unwrap()))]
     pub async fn upload_large_file(
         &self,

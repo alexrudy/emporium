@@ -30,13 +30,16 @@ enum B2BucketStatus {
     Key(B2ApplicationKey),
 }
 
+/// Configuration for a multi-client which uses a separate key per bucket.
 #[derive(Debug, Clone, Deserialize)]
 pub struct B2MultiConfig {
+    /// Map of bucket names to application keys.
     #[serde(flatten)]
     pub buckets: HashMap<Box<str>, B2ApplicationKey>,
 }
 
 impl B2MultiConfig {
+    /// Create a new multi-client from a configuration.
     pub fn client(self) -> B2MultiClient {
         if self.buckets.is_empty() {
             tracing::warn!("No buckets configured for B2 client");

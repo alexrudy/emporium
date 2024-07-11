@@ -7,6 +7,7 @@ use thiserror::Error;
 
 use crate::application::{AuthenticationError, AuthenticationErrorKind};
 
+/// An error deserialized from a response from the B2 API.
 #[derive(Debug, Clone, Error, Deserialize)]
 #[serde(from = "RawErrorInfo")]
 #[error("{status}: {message} ({code})")]
@@ -17,23 +18,32 @@ pub struct B2Error {
 }
 
 impl B2Error {
+    /// The HTTP status code of the response.
     pub fn status_code(&self) -> StatusCode {
         self.status
     }
 
+    /// The error code returned by the B2 API.
     pub fn kind(&self) -> &B2ErrorCode {
         &self.code
     }
 
+    /// The error message returned by the B2 API.
     pub fn message(&self) -> &str {
         &self.message
     }
 }
 
+/// An error code returned by the B2 API.
 #[derive(Debug, Clone)]
 pub enum B2ErrorCode {
+    /// The authorization token has expired, and should be refreshed.
     ExpiredAuthToken,
+
+    /// The request was malformed or invalid.
     BadRequest,
+
+    /// An error code not recognized by this library.
     Other(String),
 }
 
@@ -74,26 +84,37 @@ impl From<RawErrorInfo> for B2Error {
     }
 }
 
+/// An error that occurred while making a request to the B2 API.
+///
+/// This can include errors from the B2 API itself, as well as errors from the client
+/// or the network.
 #[derive(Debug, Error)]
 pub enum B2RequestError {
+    /// An error returned by the B2 API.
     #[error(transparent)]
     B2(#[from] B2Error),
 
+    /// An error deserializing a response from the B2 API.
     #[error("deserializing: {0} {1}")]
     Serde(#[source] serde_json::Error, String),
 
+    /// An io error occurred, probably from the client.
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
 
+    /// No credentials are available for the given bucket.
     #[error("no credentials for bucket {0}")]
     NoCredentials(String),
 
+    /// An error occurred while reading the response body.
     #[error("body: {0}")]
     Body(#[source] Box<dyn std::error::Error + Send + Sync>),
 
+    /// An error occurred while making a request to the B2 API.
     #[error("client: {0}")]
     Client(#[from] hyperdriver::client::Error),
 
+    /// The request encountered too many errors during retries.
     #[error("Retries exhausted")]
     RetriesExhausted,
 }
@@ -116,6 +137,7 @@ impl From<AuthenticationError> for B2RequestError {
 }
 
 impl B2RequestError {
+    /// Unwrap the error, panicking if it is not a B2 error.
     pub fn unwrap_b2(self) -> B2Error {
         match self {
             B2RequestError::B2(err) => err,
@@ -123,6 +145,7 @@ impl B2RequestError {
         }
     }
 
+    /// Get a reference to the B2 error, if there is one.
     pub fn b2(&self) -> Option<&B2Error> {
         match self {
             B2RequestError::B2(err) => Some(err),

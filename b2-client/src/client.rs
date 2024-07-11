@@ -86,7 +86,7 @@ impl B2Client {
 
     pub(crate) async fn refresh_authorization(&self) -> Result<(), AuthenticationError> {
         tracing::debug!(
-            key = self.keys.key_id.revealed(),
+            key = self.keys.key_id().revealed(),
             "Refreshing B2 authorization"
         );
 

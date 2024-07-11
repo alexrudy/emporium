@@ -75,17 +75,28 @@ impl From<B2Error> for AuthenticationErrorKind {
     }
 }
 
+/// B2 Application Key, which consists of an ID and a secret key.
 #[derive(Debug, Clone, Deserialize)]
 pub struct B2ApplicationKey {
-    pub key_id: Secret,
-    pub key: Secret,
+    key_id: Secret,
+    key: Secret,
 }
 
 impl B2ApplicationKey {
+    /// Create a new B2 Application Key.
     pub fn new(key_id: Secret, key: Secret) -> Self {
+        if !key_id.revealed().starts_with("0") {
+            tracing::warn!("B2 key id does not start with 0");
+        }
+
+        if !key.revealed().starts_with("K") {
+            tracing::warn!("B2 key does not start with K");
+        }
+
         Self { key_id, key }
     }
 
+    /// Load the B2 Application Key from the environment.
     pub fn from_env() -> Result<Self, VarError> {
         let key_id = Secret::from_env(B2_KEY_ID_ENV)?;
         let key = Secret::from_env(B2_KEY_ENV)?;
@@ -100,8 +111,19 @@ impl B2ApplicationKey {
             Secret::from("K001B2-key-test"),
         )
     }
+
+    /// Get the Key, this is the secret part of the authentication pair.
+    pub fn key(&self) -> &Secret {
+        &self.key
+    }
+
+    /// Get the key ID, this is the less secret part of the authentication pair.
+    pub fn key_id(&self) -> &Secret {
+        &self.key_id
+    }
 }
 
+/// Represents the authorization response from the B2 API.
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct B2Authorization {
@@ -267,6 +289,8 @@ impl B2ApplicationKey {
         Ok(auth)
     }
 
+    /// Fetch a new authorization and create a client which can use that authorization
+    /// to make API calls.
     pub async fn client(self) -> Result<B2Client, AuthenticationError> {
         let client = self.client_inner().await?;
         Ok(client)
