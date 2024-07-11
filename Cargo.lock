@@ -168,6 +168,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "bookshelf"
+version = "0.1.0"
+dependencies = [
+ "camino",
+ "chrono",
+ "futures",
+ "serde",
+ "storage",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

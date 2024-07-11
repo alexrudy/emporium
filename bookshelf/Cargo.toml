@@ -1,0 +1,14 @@
+[package]
+name = "bookshelf"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+chrono.workspace = true
+camino.workspace = true
+thiserror.workspace = true
+storage = { path = "../storage" }
+tracing.workspace = true
+futures.workspace = true
+tokio = { workspace = true }
+serde = { workspace = true, features = ["derive"] }

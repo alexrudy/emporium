@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "api-client",
     "b2-client",
+    "bookshelf",
     "echocache",
     "secret",
     "storage",
