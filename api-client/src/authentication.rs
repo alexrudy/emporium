@@ -1,3 +1,12 @@
+//! Authentication for API clients.
+//!
+//! The `Authentication` trait is used to authenticate with an API queried via the `ApiClient`.
+//!
+//! Three implementations are provided:
+//! - `BasicAuth` for Basic authentication
+//! - `BearerAuth` for Bearer token authentication
+//! - `()` for no authentication
+
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
@@ -5,6 +14,19 @@ use http::HeaderValue;
 use secret::Secret;
 use tower::layer::Layer;
 
+/// Create a basic authentication header value, with the password being optional.
+///
+/// Basic authentication Base64 encodes the username and password, separated by a colon.
+///
+/// # Example
+/// ```rust
+/// use api_client::basic_auth;
+/// let username = "username";
+/// let password = "password";
+///
+/// let header = basic_auth(username, Some(password));
+/// assert_eq!(header.to_str().unwrap(), "Basic dXNlcm5hbWU6cGFzc3dvcmQ=");
+/// ```
 pub fn basic_auth<U, P>(username: U, password: Option<P>) -> HeaderValue
 where
     U: std::fmt::Display,
@@ -29,26 +51,83 @@ where
 
 /// Trait to represent authenticating with an API queried via reqwest.
 pub trait Authentication: Clone {
-    /// Called by [Secret] to implement authorization.
+    /// Called by the `ApiClient` to implement authorization.
     fn authenticate<B>(&self, req: http::Request<B>) -> http::Request<B>;
 }
 
-/// Authentication
+/// Authentication with a bearer token, often used with an API key.
+///
+/// The token is stored as a [Secret] to prevent it from being logged.
+///
+/// # Example
+/// ```rust
+/// use api_client::BearerAuth;
+///
+/// let key = "my-secret";
+/// let auth = BearerAuth::new(key);
+/// let header = auth.header_value();
+///
+/// assert_eq!(header.to_str().unwrap(), "Bearer my-secret");
+/// ```
 #[derive(Debug, Clone)]
 pub struct BearerAuth(Secret);
 
 impl BearerAuth {
-    pub fn new(key: Secret) -> Self {
-        BearerAuth(key)
+    /// Create a new Bearer authentication with a given key.
+    pub fn new<K: Into<Secret>>(key: K) -> Self {
+        BearerAuth(key.into())
+    }
+
+    /// Get the header value for the Bearer token.
+    pub fn header_value(&self) -> HeaderValue {
+        let mut header_value: HeaderValue =
+            format!("Bearer {}", self.0.revealed()).parse().unwrap();
+        header_value.set_sensitive(true);
+        header_value
     }
 }
 
 impl Authentication for BearerAuth {
     fn authenticate<B>(&self, mut req: http::Request<B>) -> http::Request<B> {
         if !req.headers().contains_key(http::header::AUTHORIZATION) {
-            let mut header_value: http::header::HeaderValue =
-                format!("Bearer {}", self.0.revealed()).parse().unwrap();
-            header_value.set_sensitive(true);
+            let headers = req.headers_mut();
+            headers.append(http::header::AUTHORIZATION, self.header_value());
+        } else {
+            tracing::warn!("{} header already set", http::header::AUTHORIZATION);
+        }
+        req
+    }
+}
+
+/// Basic authentication, with the password being optional.
+///
+/// Basic authentication Base64 encodes the username and password, separated by a colon.
+/// in a header value prefixed with "Basic ".
+#[derive(Debug, Clone)]
+pub struct BasicAuth {
+    username: String,
+    password: Option<Secret>,
+}
+
+impl BasicAuth {
+    /// Create a new Basic authentication with a given username and optional password.
+    pub fn new<U, P>(username: U, password: Option<P>) -> Self
+    where
+        U: Into<String>,
+        P: Into<Secret>,
+    {
+        BasicAuth {
+            username: username.into(),
+            password: password.map(Into::into),
+        }
+    }
+}
+
+impl Authentication for BasicAuth {
+    fn authenticate<B>(&self, mut req: http::Request<B>) -> http::Request<B> {
+        if !req.headers().contains_key(http::header::AUTHORIZATION) {
+            let header_value =
+                basic_auth(&self.username, self.password.as_ref().map(Secret::revealed));
             let headers = req.headers_mut();
             headers.append(http::header::AUTHORIZATION, header_value);
         } else {
@@ -64,6 +143,9 @@ impl Authentication for () {
     }
 }
 
+/// A layer to provide a swappable authentication mechanism.
+///
+/// This allows users to update the authentication mechanism without needing to recreate the client.
 #[derive(Debug)]
 pub struct AuthenticationLayer<A> {
     auth: Arc<ArcSwap<A>>,
@@ -91,6 +173,7 @@ impl<A, S> Layer<S> for AuthenticationLayer<A> {
     }
 }
 
+/// A service to provide a swappable authentication mechanism.
 #[derive(Debug)]
 pub struct AuthenticationService<A, S> {
     inner: S,
@@ -109,6 +192,11 @@ impl<A, S: Clone> Clone for AuthenticationService<A, S> {
 impl<A, S> AuthenticationService<A, S> {
     pub(crate) fn new(inner: S, auth: Arc<ArcSwap<A>>) -> Self {
         Self { inner, auth }
+    }
+
+    /// Set the authentication object, replacing the one currently in use.
+    pub fn set_auth(&self, auth: A) {
+        self.auth.store(Arc::new(auth));
     }
 }
 

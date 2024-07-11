@@ -1,23 +1,30 @@
+//! Request building utilities
+
 use std::time::Duration;
 
 use http::{header::HeaderValue, HeaderName, Uri};
 
 use crate::basic_auth;
-use crate::{response::ApiResponse, ApiClient, Authentication};
+use crate::{response::Response, ApiClient, Authentication};
 
 type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
 type Result<T, E = BoxError> = std::result::Result<T, E>;
 
+/// Extension trait for HTTP requests
 pub trait RequestExt {
+    /// Add a basic authentication header to the request
     fn basic_auth<U, P>(self, username: U, password: Option<P>) -> Self
     where
         U: std::fmt::Display,
         P: std::fmt::Display;
 
+    /// Add a bearer authentication header to the request
     fn bearer_auth<T>(self, token: T) -> Self
     where
         T: std::fmt::Display;
 
+    /// Get the parts of the request, excluding the body, without
+    /// consuming the request
     fn parts(&self) -> http::request::Parts;
 }
 
@@ -93,6 +100,7 @@ impl RequestExt for http::request::Builder {
     }
 }
 
+/// Builder for HTTP requests on an API client
 #[derive(Debug)]
 pub struct RequestBuilder<A> {
     req: http::request::Builder,
@@ -102,6 +110,7 @@ pub struct RequestBuilder<A> {
 }
 
 impl<A> RequestBuilder<A> {
+    /// Create a new request builder
     pub fn new(client: ApiClient<A>, uri: Uri, method: http::Method) -> Self {
         Self {
             req: http::Request::builder().method(method).uri(uri),
@@ -111,6 +120,7 @@ impl<A> RequestBuilder<A> {
         }
     }
 
+    /// Add a header to the request
     pub fn header<K, V>(mut self, key: K, value: V) -> Self
     where
         HeaderName: TryFrom<K>,
@@ -122,6 +132,7 @@ impl<A> RequestBuilder<A> {
         self
     }
 
+    /// Add multiple headers to the request
     pub fn headers<I, K, V>(mut self, headers: I) -> Self
     where
         I: IntoIterator<Item = (K, V)>,
@@ -137,15 +148,18 @@ impl<A> RequestBuilder<A> {
         self
     }
 
+    /// Get a mutable reference to the headers of the request
     pub fn headers_mut(&mut self) -> Option<&mut http::header::HeaderMap> {
         self.req.headers_mut()
     }
 
+    /// Set the timeout for the request
     pub fn timeout(mut self, timeout: Duration) -> Self {
         self.timeout = Some(timeout);
         self
     }
 
+    /// Set the body of the request
     pub fn body<B: Into<hyperdriver::Body>>(self, body: B) -> Self {
         Self {
             body: Some(body.into()),
@@ -153,7 +167,8 @@ impl<A> RequestBuilder<A> {
         }
     }
 
-    pub async fn send(self) -> Result<ApiResponse>
+    /// Send the request and return the response
+    pub async fn send(self) -> Result<Response>
     where
         A: Authentication,
     {

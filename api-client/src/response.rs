@@ -1,6 +1,9 @@
+//! Response types and traits for working with HTTP responses.
+
 use hyperdriver::Body;
 
 mod futures {
+    use std::fmt;
     use std::future::Future;
     use std::pin::Pin;
     use std::task::{ready, Context, Poll};
@@ -13,6 +16,12 @@ mod futures {
 
     #[pin_project]
     pub struct Bytes(#[pin] Collect<Body>);
+
+    impl fmt::Debug for Bytes {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.debug_struct("Bytes").finish()
+        }
+    }
 
     impl Future for Bytes {
         type Output = Result<bytes::Bytes, BoxError>;
@@ -31,6 +40,12 @@ mod futures {
 
     #[pin_project]
     pub struct Text(#[pin] Bytes);
+
+    impl fmt::Debug for Text {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.debug_struct("Text").finish()
+        }
+    }
 
     impl Future for Text {
         type Output = Result<String, BoxError>;
@@ -58,6 +73,12 @@ mod futures {
         #[pin]
         inner: Bytes,
         _phantom: std::marker::PhantomData<T>,
+    }
+
+    impl<T> fmt::Debug for Json<T> {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.debug_struct("Json").finish()
+        }
     }
 
     impl<T> Future for Json<T>
@@ -91,15 +112,23 @@ mod futures {
     }
 }
 
+/// Extension trait for working with HTTP response bodies.
 pub trait ResponseBodyExt {
+    /// Get a reference to the response body.
     fn body(&self) -> &Body;
+
+    /// Collect the response body into a `Bytes` instance.
     fn bytes(self) -> self::futures::Bytes;
+
+    /// Collect the response body into a `String` instance.
     fn text(self) -> self::futures::Text
     where
         Self: Sized,
     {
         self.bytes().into()
     }
+
+    /// Collect the body and deserialize it as JSON.
     fn json<T>(self) -> self::futures::Json<T>
     where
         T: serde::de::DeserializeOwned,
@@ -109,11 +138,21 @@ pub trait ResponseBodyExt {
     }
 }
 
+/// Extension trait for working with HTTP response types.
 pub trait ResponseExt: ResponseBodyExt {
+    /// Get the status code of the response.
     fn status(&self) -> http::StatusCode;
+
+    /// Get the headers of the response.
     fn headers(&self) -> &http::HeaderMap;
+
+    /// Get the URI of the request that generated the response.
     fn uri(&self) -> &http::Uri;
+
+    /// Get the parts of the request that generated the response.
     fn request(&self) -> &http::request::Parts;
+
+    /// Get the parts of the response.
     fn response(&self) -> &http::response::Parts;
 }
 
@@ -131,14 +170,17 @@ impl ResponseBodyExt for http::Response<Body> {
     }
 }
 
+/// Wrapper around an HTTP response that provides additional methods for working with the response,
+/// and allows for easy access to the response and request parts.
 #[derive(Debug)]
-pub struct ApiResponse {
+pub struct Response {
     request: http::request::Parts,
     response: http::response::Parts,
     body: Body,
 }
 
-impl ApiResponse {
+impl Response {
+    /// Create a new `Response` instance.
     pub fn new(request: http::request::Parts, response: http::response::Response<Body>) -> Self {
         let (response, body) = response.into_parts();
 
@@ -149,16 +191,18 @@ impl ApiResponse {
         }
     }
 
+    /// Get the parts of the request that generated the response.
     pub fn into_parts(self) -> (http::request::Parts, http::response::Parts, Body) {
         (self.request, self.response, self.body)
     }
 
+    /// Convert the `Response` into an `http::Response` instance.
     pub fn into_response(self) -> http::Response<Body> {
         http::Response::from_parts(self.response, self.body)
     }
 }
 
-impl ResponseBodyExt for ApiResponse {
+impl ResponseBodyExt for Response {
     fn body(&self) -> &Body {
         &self.body
     }
@@ -172,7 +216,7 @@ impl ResponseBodyExt for ApiResponse {
     }
 }
 
-impl ResponseExt for ApiResponse {
+impl ResponseExt for Response {
     fn status(&self) -> http::StatusCode {
         self.response.status
     }

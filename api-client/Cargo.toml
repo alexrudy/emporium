@@ -24,3 +24,6 @@ tracing.workspace = true
 
 [dev-dependencies]
 hyperdriver = { workspace = true, features = ["tls-ring"] }
+
+[lints]
+workspace = true

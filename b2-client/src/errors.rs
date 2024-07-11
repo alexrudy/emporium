@@ -1,6 +1,6 @@
 use std::fmt;
 
-use api_client::response::{ApiResponse, ResponseBodyExt as _, ResponseExt as _};
+use api_client::response::{Response, ResponseBodyExt as _, ResponseExt as _};
 use http::StatusCode;
 use serde::{de::DeserializeOwned, Deserialize};
 use thiserror::Error;
@@ -140,7 +140,7 @@ pub(crate) trait B2ResponseExt {
 }
 
 #[async_trait::async_trait]
-impl B2ResponseExt for ApiResponse {
+impl B2ResponseExt for Response {
     async fn handle_errors(self) -> Result<Self, B2RequestError> {
         if self.status().is_success() {
             Ok(self)

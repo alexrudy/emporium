@@ -55,3 +55,9 @@ features = ["io-util", "fs", "rt"]
 [workspace.dependencies.tracing-subscriber]
 version = "^0.3"
 features = ["env-filter", "json", "fmt", "ansi", "std"]
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+missing_debug_implementations = "warn"
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin)'] }

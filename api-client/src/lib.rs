@@ -1,3 +1,5 @@
+//! A library for building HTTP clients for APIs
+
 #![allow(clippy::arc_with_non_send_sync)]
 
 use std::future::Future;
@@ -20,20 +22,23 @@ mod retry;
 pub mod uri;
 
 pub use self::authentication::{
-    basic_auth, Authentication, AuthenticationLayer, AuthenticationService, BearerAuth,
+    basic_auth, Authentication, AuthenticationLayer, AuthenticationService, BasicAuth, BearerAuth,
 };
 pub use self::paginate::{Paginated, PaginatedData, PaginationInfo, Paginator};
 pub use self::request::RequestBuilder;
 pub use self::request::RequestExt;
-use self::response::ApiResponse;
+use self::response::Response;
 pub use self::retry::{Attempts, Backoff};
 use self::uri::UriExtension as _;
 
+/// A boxed service used for API requests in the Client
 pub type ApiService = BoxCloneService<
     hyperdriver::body::Request,
     hyperdriver::body::Response,
     hyperdriver::client::Error,
 >;
+
+/// A boxed future used for API requests in the Client
 pub type BoxFuture<'a, T> = std::pin::Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// A client for accessing APIs over HTTP / HTTPS
@@ -65,6 +70,8 @@ where
         }
     }
 
+    /// Create a new API Client from a base URL and an authentication method, as well as an inner service
+    /// which will be used to make the HTTP requests.
     pub fn new_with_inner_service<S>(base: Uri, authentication: A, inner: S) -> Self
     where
         S: tower::Service<
@@ -91,24 +98,29 @@ where
         }
     }
 
+    /// Set the base URL for the client
     pub fn set_base(&self, base: Uri) {
         self.base.store(Arc::new(base));
     }
 
+    /// Replace the authentication method for the client
     pub fn refresh_auth(&self, authentication: A) {
         self.authentication.store(Arc::new(authentication));
     }
 
+    /// Get the current authentication method
     pub fn auth(&self) -> Guard<Arc<A>> {
         self.authentication.as_ref().load()
     }
 
+    /// Get the inner service used to make HTTP requests
     pub fn inner(&self) -> &hyperdriver::client::SharedClientService<hyperdriver::Body> {
         &self.inner
     }
 }
 
 impl ApiClient<BearerAuth> {
+    /// Create a new API Client with a Bearer token authentication method
     pub fn new_bearer_auth<K: Into<Secret>>(base: Uri, token: K) -> Self {
         Self::new(base, BearerAuth::new(token.into()))
     }
@@ -118,42 +130,49 @@ impl<A> ApiClient<A>
 where
     A: Authentication,
 {
+    /// Create a GET request builder for the client
     pub fn get(&self, endpoint: &str) -> RequestBuilder<A> {
         let url = (*self.base.load_full()).clone().join(endpoint);
         RequestBuilder::new(self.clone(), url, Method::GET)
     }
 
+    /// Create a PUT request builder for the client
     pub fn put(&self, endpoint: &str) -> RequestBuilder<A> {
         let url = (*self.base.load_full()).clone().join(endpoint);
         RequestBuilder::new(self.clone(), url, Method::PUT)
     }
 
+    /// Create a POST request builder for the client
     pub fn post(&self, endpoint: &str) -> RequestBuilder<A> {
         let url = (*self.base.load_full()).clone().join(endpoint);
         RequestBuilder::new(self.clone(), url, Method::POST)
     }
 
+    /// Create a DELETE request builder for the client
     pub fn delete(&self, endpoint: &str) -> RequestBuilder<A> {
         let url = (*self.base.load_full()).clone().join(endpoint);
         RequestBuilder::new(self.clone(), url, Method::DELETE)
     }
 
+    /// Execute a request and return the response
     pub async fn execute(
         &self,
         req: hyperdriver::body::Request,
-    ) -> Result<ApiResponse, hyperdriver::client::Error> {
+    ) -> Result<Response, hyperdriver::client::Error> {
         let parts = req.parts();
 
         let response = self.inner.clone().oneshot(req).await?;
-        Ok(ApiResponse::new(parts, response))
+        Ok(Response::new(parts, response))
     }
 }
 
+/// A set of tools to help with testing API clients
 pub mod mock {
     use bytes::Bytes;
     use http::response;
     use std::collections::HashMap;
 
+    /// A mock response for testing API clients
     #[derive(Debug, Clone)]
     pub struct MockResponse {
         status: http::StatusCode,
@@ -162,6 +181,7 @@ pub mod mock {
     }
 
     impl MockResponse {
+        /// Create a new mock response
         pub fn new(status: http::StatusCode, headers: http::HeaderMap, body: Vec<u8>) -> Self {
             Self {
                 status,
@@ -171,18 +191,22 @@ pub mod mock {
         }
     }
 
+    /// A mock service for testing API clients which returns pre-configured responses
+    /// based on the requested path.
     #[derive(Debug, Default, Clone)]
     pub struct MockService {
         responses: HashMap<String, MockResponse>,
     }
 
     impl MockService {
+        /// Create a new mock service
         pub fn new() -> Self {
             Self {
                 responses: Default::default(),
             }
         }
 
+        /// Add a new response to the mock service
         pub fn add(
             &mut self,
             path: &str,

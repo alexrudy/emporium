@@ -16,54 +16,50 @@ pub struct PaginationError {
     source: Option<BoxError>,
 }
 
-pub trait Paginator {
-    type Item;
-
-    fn items(&mut self) -> Vec<Self::Item>;
-
-    fn pages(&self) -> Option<usize> {
-        None
-    }
-
-    fn page(&self) -> Option<usize> {
-        None
-    }
-
-    fn next(
-        &self,
-        req: http::Request<hyperdriver::Body>,
-    ) -> Option<http::Request<hyperdriver::Body>>;
-}
-
+/// A trait for paginating responses from an API
 pub trait PaginationInfo {
+    /// Get the total number of pages
     fn pages(&self) -> Option<usize>;
 
+    /// Get the current page number
     fn page(&self) -> Option<usize>;
 
+    /// Create a request for the next page of results
     fn next(
         &self,
         req: http::Request<hyperdriver::Body>,
     ) -> Option<http::Request<hyperdriver::Body>>;
 }
 
+/// A trait for paginating responses from an API
+pub trait Paginator: PaginationInfo {
+    /// The type of item that the paginator will return
+    type Item;
+
+    /// Get all items from the paginator in this page
+
+    fn items(&mut self) -> Vec<Self::Item>;
+}
+
+/// A paginated response from an API. This is a generic struct that can be used to deserialize
+/// responses which include a `data` field and then add custom pagination fields along side that.
+///
+/// The type `P` should implement the `PaginationInfo` trait, but can acquire this information
+/// from the deserialized request body.
 #[derive(Debug, Clone, Deserialize)]
 pub struct PaginatedData<T, P> {
+    /// The data returned in the response
     pub data: Vec<T>,
 
+    /// Pagination information
     #[serde(flatten)]
     pub paginate: P,
 }
 
-impl<T, P> Paginator for PaginatedData<T, P>
+impl<T, P> PaginationInfo for PaginatedData<T, P>
 where
     P: PaginationInfo,
 {
-    type Item = T;
-
-    fn items(&mut self) -> Vec<Self::Item> {
-        std::mem::take(&mut self.data)
-    }
-
     fn pages(&self) -> Option<usize> {
         self.paginate.pages()
     }
@@ -80,6 +76,17 @@ where
     }
 }
 
+impl<T, P> Paginator for PaginatedData<T, P>
+where
+    P: PaginationInfo,
+{
+    type Item = T;
+
+    fn items(&mut self) -> Vec<Self::Item> {
+        std::mem::take(&mut self.data)
+    }
+}
+
 type NextPageFuture<P> = BoxFuture<'static, Result<Option<P>, BoxError>>;
 
 enum PaginatedStreamState<T, P> {
@@ -89,6 +96,11 @@ enum PaginatedStreamState<T, P> {
     Done,
 }
 
+/// A stream of items which can be collected from a paginated API response.
+///
+/// The type `A` should implement the `Authentication` trait, and the type `T` should be the type
+/// of item that is returned in the paginated response. The type `P` should implement the `Paginator`
+/// trait, and will be used to paginate the response.
 #[pin_project::pin_project]
 pub struct Paginated<A, T, P> {
     client: crate::ApiClient<A>,
@@ -106,6 +118,7 @@ impl<A: fmt::Debug, T, P> fmt::Debug for Paginated<A, T, P> {
 }
 
 impl<A, T, P> Paginated<A, T, P> {
+    /// Create a new paginated stream from an API client and a request
     pub fn new(client: crate::ApiClient<A>, request: http::Request<hyperdriver::Body>) -> Self {
         Self {
             client,

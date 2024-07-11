@@ -1,10 +1,14 @@
+//! URI utilities.
+
 use camino::Utf8Path;
 use http::Uri;
 
+/// Serialize and Deserialize a URI to and from a string.
 pub mod serde {
     use http::Uri;
     use serde::{Deserialize as _, Deserializer};
 
+    /// Serialize and Deserialize a URI to and from a string.
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Uri, D::Error>
     where
         D: Deserializer<'de>,
@@ -13,6 +17,7 @@ pub mod serde {
         s.parse().map_err(serde::de::Error::custom)
     }
 
+    /// Serialize a URI as a string
     pub fn serialize<S>(uri: &Uri, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -21,7 +26,9 @@ pub mod serde {
     }
 }
 
+/// Extension trait for URIs.
 pub trait UriExtension {
+    /// Join a path to a URI.
     fn join<P: AsRef<str>>(self, path: P) -> Uri;
 }
 

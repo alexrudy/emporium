@@ -2,14 +2,21 @@ use http::StatusCode;
 use hyperdriver::body::TryCloneRequest;
 use tower::retry::Policy;
 
+/// A policy for retrying requests with exponential backoff
 #[derive(Debug, Clone)]
 pub struct Backoff {
-    delay: std::time::Duration,
-    exponent: u32,
-    max_delay: std::time::Duration,
+    /// The initial delay for the backoff
+    pub delay: std::time::Duration,
+
+    /// The exponent to increase the delay by
+    pub exponent: u32,
+
+    /// The maximum delay for the backoff
+    pub max_delay: std::time::Duration,
 }
 
 impl Backoff {
+    /// Create a new backoff policy.
     pub fn new(delay: std::time::Duration, exponent: u32, max_delay: std::time::Duration) -> Self {
         Self {
             delay,
@@ -18,6 +25,7 @@ impl Backoff {
         }
     }
 
+    /// Increment the backoff delay
     pub fn increment(&self) -> Option<Self> {
         let delay = self.delay.checked_mul(self.exponent)?;
 
@@ -32,6 +40,8 @@ impl Backoff {
         })
     }
 
+    /// Create a new backoff policy when the server has rate limited the request
+    /// with a specific delay. The policy will continue as normal after the delay.
     pub fn rate_limited(&self, delay: std::time::Duration) -> Self {
         Self {
             delay,
@@ -122,10 +132,12 @@ impl std::future::Future for BackoffFuture {
     }
 }
 
+/// A policy for retrying requests a fixed number of times
 #[derive(Debug, Clone)]
 pub struct Attempts(usize);
 
 impl Attempts {
+    /// Create a new attempts policy
     pub fn new(n: usize) -> Self {
         Self(n)
     }
