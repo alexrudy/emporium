@@ -1,3 +1,5 @@
+//! Simple cache for async functions.
+
 #![allow(clippy::arc_with_non_send_sync)]
 
 use std::{
@@ -39,6 +41,7 @@ where
     }
 }
 
+/// A handle to a request which is inflight.
 pub struct Handle<T> {
     fut: BoxFut<'static, Result<T, RecvError>>,
 }
@@ -71,6 +74,7 @@ where
     }
 }
 
+/// A boxed future which is Send and 'static.
 pub type BoxFut<'f, O> = Pin<Box<dyn Future<Output = O> + Send + 'f>>;
 
 /// A coalesced request, which will ensure that only one of
@@ -149,6 +153,7 @@ where
         Handle::new(rx)
     }
 
+    /// Get the value of the request, or start the request if it is not already inflight.
     pub async fn get<F>(&self, f: F) -> Result<T, RecvError>
     where
         F: FnOnce() -> BoxFut<'static, T>,
@@ -193,6 +198,7 @@ impl<T> Default for Cached<T> {
 }
 
 impl<T> Cached<T> {
+    /// Create a new cache with an optional expiration time.
     #[must_use]
     pub fn new(expiration: Option<Duration>) -> Self {
         Self {
@@ -201,6 +207,7 @@ impl<T> Cached<T> {
         }
     }
 
+    /// Create a new cache with an optional expiration time and an initial value.
     #[must_use]
     pub fn new_with_value(value: T, expiration: Option<Duration>) -> Self {
         Self {
@@ -209,11 +216,13 @@ impl<T> Cached<T> {
         }
     }
 
+    /// Clear the cache, removing the value.
     pub fn clear(&self) {
         let mut inner = self.inner.lock();
         *inner = InnerCache::Empty;
     }
 
+    /// Apply a function to the cached value, if it exists, and the cache is not expired. Return the result.
     pub fn map_cached<F, U>(&self, f: F) -> Option<U>
     where
         F: FnOnce(&T) -> U,
@@ -234,6 +243,7 @@ impl<T> Cached<T>
 where
     T: Clone + Send + Sync + 'static,
 {
+    /// Call a future to get a value, and cache it.
     pub async fn get<F>(&self, f: F) -> T
     where
         F: FnOnce() -> BoxFut<'static, T>,
