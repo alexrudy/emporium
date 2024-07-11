@@ -8,6 +8,7 @@ use thiserror::Error;
 type Date = chrono::NaiveDate;
 const DATE_FORMAT: &str = "%Y%m%d";
 
+/// An error indicating that a string could not be parsed as an epoch
 #[derive(Debug, Error)]
 #[error("Invalid epoch: {value:?}")]
 pub struct InvalidEpoch {
@@ -15,7 +16,8 @@ pub struct InvalidEpoch {
 }
 
 impl InvalidEpoch {
-    pub fn new(value: String) -> Self {
+    /// Create a new error indicating that a string could not be parsed as an epoch
+    pub(crate) fn new(value: String) -> Self {
         Self { value }
     }
 }
@@ -27,18 +29,22 @@ impl InvalidEpoch {
 pub struct Epoch(Date);
 
 impl Epoch {
+    /// Create a new epoch from the current date
     pub fn today() -> Self {
         Epoch(chrono::Utc::now().date_naive())
     }
 
+    /// Convert the epoch to a path
     pub fn to_path(&self) -> Utf8PathBuf {
         (*self).into()
     }
 
+    /// Get the month of the epoch
     pub fn month(&self) -> u32 {
         self.0.month()
     }
 
+    /// Get the year of the epoch
     pub fn year(&self) -> i32 {
         self.0.year()
     }
@@ -84,11 +90,19 @@ impl fmt::Display for Epoch {
     }
 }
 
+/// A selector for an epoch in a range
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EpochSelector {
+    /// The earliest epoch in the range
     Earliest,
+
+    /// The latest epoch in the range
     Latest,
+
+    /// An exact epoch in the range
     Exact(Epoch),
+
+    /// The Nth latest epoch in the range
     Nth(usize),
 }
 
@@ -130,6 +144,7 @@ impl fmt::Display for EpochSelector {
 }
 
 impl EpochSelector {
+    /// Given a tree of epochs, find the epoch that matches the selector
     pub fn find<V>(&self, epochs: &BTreeMap<Epoch, V>) -> Option<Epoch> {
         match self {
             Self::Earliest => epochs.keys().next().cloned(),
@@ -206,6 +221,14 @@ mod test {
         assert_eq!(
             selector.find(&epochs),
             Some(epoch_items[1]),
+            "{:?}",
+            selector
+        );
+
+        let selector = EpochSelector::Nth(2);
+        assert_eq!(
+            selector.find(&epochs),
+            Some(epoch_items[0]),
             "{:?}",
             selector
         );

@@ -1,3 +1,5 @@
+//! Types and functions to manage backup expiration policies.
+
 use std::any::type_name;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Debug;
@@ -185,11 +187,19 @@ impl Policy {
     }
 }
 
+/// A policy for the number of days, weeks, months, and years to retain backups.
 #[derive(Debug, Clone, Copy, Deserialize)]
 pub struct ExpirationPolicy {
+    /// The number of days to retain backups
     pub days: u32,
+
+    /// The number of weeks to retain weekly backups
     pub weeks: u32,
+
+    /// The number of months to retain monthly backups
     pub months: u32,
+
+    /// The number of years to retain yearly backups
     pub years: u32,
 }
 
@@ -216,6 +226,7 @@ impl ExpirationPolicy {
         Policy::new(policies)
     }
 
+    /// Determine which backups have expired based on the policy.
     pub fn expired<I>(&self, origin: Epoch, iterator: I) -> BTreeSet<Epoch>
     where
         I: Iterator<Item = Epoch>,

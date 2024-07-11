@@ -1,3 +1,5 @@
+//! Bookcase is a library for managing collections in cloud storage, which are indexed by date.
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Arc,
@@ -14,14 +16,20 @@ pub use epoch::{Epoch, EpochSelector, InvalidEpoch};
 use tokio::io;
 use tracing::instrument;
 
+/// Date type used to represent epochs.
 pub type Date = chrono::NaiveDate;
+
+/// A collection of paths indexed by date.
 type Paths = BTreeMap<Epoch, Vec<Utf8PathBuf>>;
 
+/// Errors that can occur when working with bookshelves.
 #[derive(Debug, Error)]
 pub enum Error {
+    /// The volume was not found.
     #[error("Volume {0} not found")]
     NotFound(String),
 
+    /// An error occurred while interacting with the storage backend.
     #[error("Storage error: {0}")]
     Storage(#[from] storage::StorageError),
 }
@@ -36,6 +44,7 @@ pub struct Bookshelf {
 }
 
 impl Bookshelf {
+    /// Create a new bookshelf with the given storage backend, bucket
     pub fn new(storage: Storage, bucket: String, prefix: Option<Utf8PathBuf>) -> Self {
         Self {
             storage,
@@ -44,11 +53,13 @@ impl Bookshelf {
         }
     }
 
+    /// Set the prefix for the bookshelf.
     pub fn with_prefix(mut self, prefix: Utf8PathBuf) -> Self {
         self.prefix = Some(prefix);
         self
     }
 
+    /// Join a path to the prefix of the bookshelf.
     pub fn join<P: AsRef<Utf8Path>>(mut self, path: P) -> Self {
         if let Some(prefix) = self.prefix.as_mut() {
             prefix.push(path);
@@ -58,18 +69,22 @@ impl Bookshelf {
         self
     }
 
+    /// Get the bucket name for the bookshelf.
     pub fn bucket(&self) -> &str {
         &self.bucket
     }
 
+    /// Get the storage backend for the bookshelf.
     pub fn storage(&self) -> &Storage {
         &self.storage
     }
 
+    /// Get the prefix for the bookshelf.
     pub fn prefix(&self) -> Option<&Utf8Path> {
         self.prefix.as_deref()
     }
 
+    /// List all volumes in the bookshelf.
     pub async fn list(&self) -> Result<Vec<Volume>, Error> {
         let mut list = self
             .storage
@@ -84,6 +99,7 @@ impl Bookshelf {
         Ok(shelves)
     }
 
+    /// Process a list of paths, deduplicating and identifying volumes.
     fn process_list(&self, list: &[Utf8PathBuf]) -> Result<Vec<Volume>, Error> {
         tracing::trace!(paths=%list.len(), "Processing paths for bookshelves");
 
@@ -144,8 +160,10 @@ impl Bookshelf {
             .collect())
     }
 
+    /// Get a volume by name, creating it if it does not exist.
     #[instrument(level="debug", skip(self), fields(bucket = %self.bucket, prefix = ?self.prefix))]
     pub async fn bookshelf(&self, name: &str) -> Result<Volume, Error> {
+        //TODO: Don't list all volumes, just check if the volume exists.
         let shelves = self.list().await?;
 
         Ok(shelves
@@ -204,6 +222,7 @@ impl InnerVolume {
     }
 }
 
+/// A volume is a collection of date-indexed artifacts in cloud storage.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Volume {
     inner: Arc<InnerVolume>,
@@ -230,14 +249,17 @@ impl Volume {
         }
     }
 
+    /// List all epochs in the volume.
     pub fn list(&self) -> BTreeSet<Epoch> {
         self.inner.paths.keys().cloned().collect()
     }
 
+    /// Get the name of the volume.
     pub fn name(&self) -> &Utf8Path {
         &self.inner.name
     }
 
+    /// Get the path of the volume, before the date component.
     pub fn path(&self) -> &Utf8Path {
         &self.inner.path
     }
@@ -248,22 +270,27 @@ impl Volume {
         &self.inner.config.storage
     }
 
+    /// Get the bucket name for the volume.
     pub fn bucket(&self) -> &str {
         &self.inner.config.bucket
     }
 
+    /// Get the prefix for the volume.
     pub fn prefix(&self) -> Option<&Utf8Path> {
         self.inner.config.prefix.as_deref()
     }
 
+    /// Get the paths indexed by epoch.
     fn paths(&self) -> &BTreeMap<Epoch, Vec<Utf8PathBuf>> {
         &self.inner.paths
     }
 
+    /// Check if an epoch exists in the volume.
     pub fn exists(&self, epoch: Epoch) -> bool {
         self.inner.paths.contains_key(&epoch)
     }
 
+    /// Get a book by epoch, creating it if it does not exist.
     pub fn get<E: Into<EpochSelector>>(&self, epoch: E) -> Option<Book> {
         let selector = epoch.into();
         let epoch = selector.find(self.paths());
@@ -271,72 +298,87 @@ impl Volume {
         epoch.map(|epoch| Book::new(self.clone(), epoch))
     }
 
+    /// Create a new, possibly empty book.
     pub fn book(&self, epoch: Epoch) -> Book {
         Book::new(self.clone(), epoch)
     }
 
+    /// Get the book for today.
     pub fn today(&self) -> Book {
         self.book(Epoch::today())
     }
 
+    /// Get the book with the earliest date.
     pub fn earliest(&self) -> Option<Book> {
         let epoch = self.paths().keys().next().cloned();
         epoch.map(|epoch| Book::new(self.clone(), epoch))
     }
 
+    /// Get the book with the latest date.
     pub fn latest(&self) -> Option<Book> {
         let epoch = self.paths().keys().last().cloned();
         epoch.map(|epoch| Book::new(self.clone(), epoch))
     }
 }
 
+/// A book is a collection of date-indexed artifacts within a volume.
 #[derive(Debug, Clone)]
 pub struct Book {
-    bookshelf: Volume,
+    volume: Volume,
     epoch: Epoch,
 }
 
 impl PartialEq for Book {
     fn eq(&self, other: &Self) -> bool {
-        self.epoch == other.epoch && self.bookshelf == other.bookshelf
+        self.epoch == other.epoch && self.volume == other.volume
     }
 }
 
 impl Book {
+    /// Create a new book with the given volume and epoch.
     pub fn new(bookshelf: Volume, epoch: Epoch) -> Self {
-        Self { bookshelf, epoch }
+        Self {
+            volume: bookshelf,
+            epoch,
+        }
     }
 
+    /// Check if the artifact exists in cloud storage.
     pub fn exists(&self) -> bool {
-        self.bookshelf.exists(self.epoch)
+        self.volume.exists(self.epoch)
     }
 
+    /// Get the epoch of the book.
     pub fn epoch(&self) -> Epoch {
         self.epoch
     }
 
+    /// Get the paths in the book.
     pub fn list(&self) -> Vec<Utf8PathBuf> {
-        self.bookshelf
+        self.volume
             .paths()
             .get(&self.epoch)
             .cloned()
             .unwrap_or_default()
     }
 
+    /// Check if the book contains the given path.
     pub async fn contains<P: AsRef<Utf8Path>>(&self, path: P) -> bool {
-        self.bookshelf
+        self.volume
             .paths()
             .get(&self.epoch)
             .map_or(false, |paths| paths.iter().any(|p| p == path.as_ref()))
     }
 
+    /// Get an entry in the book, with download and upload methods.
     pub fn entry<P: AsRef<Utf8Path>>(&self, path: P) -> Entry {
-        Entry::new(self.bookshelf.clone(), self.epoch, path.as_ref())
+        Entry::new(self.volume.clone(), self.epoch, path.as_ref())
     }
 
+    /// Delete all artifacts in the book.
     pub async fn delete(&self) -> Result<(), Error> {
         let paths = self
-            .bookshelf
+            .volume
             .paths()
             .get(&self.epoch)
             .cloned()
@@ -344,11 +386,11 @@ impl Book {
 
         let mut futures = Vec::with_capacity(paths.len());
         for path in paths {
-            let path = self.bookshelf.path().join(path);
+            let path = self.volume.path().join(path);
             futures.push(async move {
-                self.bookshelf
+                self.volume
                     .storage()
-                    .delete(&self.bookshelf.inner.config.bucket, &path)
+                    .delete(&self.volume.inner.config.bucket, &path)
                     .await
             });
         }
@@ -358,80 +400,88 @@ impl Book {
     }
 }
 
+/// An entry is a single artifact in cloud storage.
 #[derive(Debug, Clone)]
 pub struct Entry {
-    bookshelf: Volume,
+    volume: Volume,
     epoch: Epoch,
     path: Utf8PathBuf,
 }
 
 impl Entry {
-    pub fn new(bookshelf: Volume, epoch: Epoch, suffix: &Utf8Path) -> Self {
-        let mut path = bookshelf.prefix().map(|p| p.to_owned()).unwrap_or_default();
-        path.push(bookshelf.name());
+    /// Create a new entry with the given volume, epoch, and path.
+    pub fn new(volume: Volume, epoch: Epoch, suffix: &Utf8Path) -> Self {
+        let mut path = volume.prefix().map(|p| p.to_owned()).unwrap_or_default();
+        path.push(volume.name());
         path.push(epoch.to_path());
         path.push(suffix);
 
         Self {
-            bookshelf,
+            volume,
             epoch,
             path,
         }
     }
 
+    /// Full path (within the bucket) of the entry.
     pub fn path(&self) -> &Utf8Path {
         &self.path
     }
 
+    /// Check if the artifact exists in cloud storage.
     pub fn exists(&self) -> bool {
-        self.bookshelf
+        self.volume
             .paths()
             .get(&self.epoch)
             .map_or(false, |paths| paths.iter().any(|p| self.path.ends_with(p)))
     }
 
+    /// Download the artifact to a writer.
     pub async fn download<'s, W>(&'s self, destination: &mut W) -> Result<(), Error>
     where
         W: io::AsyncWrite + Unpin + Send + Sync + 's,
     {
         let remote = self.path();
 
-        self.bookshelf
+        self.volume
             .storage()
-            .download(&self.bookshelf.inner.config.bucket, remote, destination)
+            .download(&self.volume.inner.config.bucket, remote, destination)
             .await
             .map_err(Error::from)
     }
 
+    /// Upload the artifact from a reader.
     pub async fn upload<'s, R>(&'s self, source: &mut R) -> Result<(), Error>
     where
         R: io::AsyncBufRead + Unpin + Send + Sync + 's,
     {
         let remote = self.path();
 
-        self.bookshelf
+        self.volume
             .storage()
-            .upload(&self.bookshelf.inner.config.bucket, remote, source)
+            .upload(&self.volume.inner.config.bucket, remote, source)
             .await?;
         Ok(())
     }
 
+    /// Upload the artifact from a file.
     pub async fn upload_file(&self, source: &Utf8Path) -> Result<(), Error> {
         let remote = self.path();
 
-        self.bookshelf
+        self.volume
             .storage()
-            .upload_file(&self.bookshelf.inner.config.bucket, remote, source)
+            .upload_file(&self.volume.inner.config.bucket, remote, source)
             .await?;
         Ok(())
     }
 
+    /// Delete the artifact from cloud storage.
     pub async fn delete(&self) -> Result<(), Error> {
         let remote = self.path();
 
-        self.bookshelf
+        self.volume
             .storage()
-            .delete(&self.bookshelf.inner.config.bucket, remote)
+            .delete(&self.volume.inner.config.bucket, remote)
             .await?;
         Ok(())
     }
