@@ -11,18 +11,29 @@ use crate::error::StorageError;
 use camino::Utf8Path;
 use chrono::{DateTime, Utc};
 
+/// A reader stream for file contents.
 pub type Reader<'r> = dyn io::AsyncBufRead + Unpin + Send + Sync + 'r;
+
+/// A writer stream for file contents.
 pub type Writer<'w> = dyn io::AsyncWrite + Unpin + Send + Sync + 'w;
 
-/// File object metadata
+/// File object metadata, which will be generically provided by the driver.
+///
+/// This struct only provides common metadata fields, and drivers may provide more specific
+/// metadata fields directly.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Metadata {
+    /// The size of the file in bytes.
     pub size: u64,
+
+    /// The creation timestamp of the file.
     pub created: DateTime<Utc>,
 }
 
+/// A storage driver, which provides the ability to interact with a storage backend.
 #[async_trait::async_trait]
 pub trait Driver: fmt::Debug {
+    /// The name of the driver.
     fn name(&self) -> &'static str;
 
     /// The Uri of the driver.
@@ -104,6 +115,10 @@ pub trait Driver: fmt::Debug {
         prefix: Option<&Utf8Path>,
     ) -> Result<Vec<String>, StorageError>;
 
+    /// Get an adaptor which accepts Uri objects instead of explicit
+    /// bucket and path pairs, and forwards those on to the underlying
+    /// driver using `Driver::parse_url` to identify the bucket and
+    /// path components.
     fn uri<'d>(&'d self) -> DriverUri<&'d Self>
     where
         Self: Sized + 'd,
@@ -111,6 +126,7 @@ pub trait Driver: fmt::Debug {
         DriverUri { driver: self }
     }
 
+    /// Parse a Uri object to extract the bucket and remote path.
     fn parse_url<'u>(&self, url: &'u Uri) -> Result<(&'u str, &'u Utf8Path), StorageError> {
         if url.scheme_str() != Some(self.scheme()) {
             return Err(StorageError::new(
@@ -133,6 +149,11 @@ pub trait Driver: fmt::Debug {
     }
 }
 
+/// An adaptor which accepts Uri objects instead of explicit
+/// bucket and path pairs, and forwards those on to the underlying
+/// driver using `Driver::parse_url` to identify the bucket and
+/// path components.
+#[derive(Debug)]
 pub struct DriverUri<D> {
     driver: D,
 }
@@ -160,6 +181,7 @@ impl<D> DriverUri<D>
 where
     D: Driver + Send + Sync + 'static,
 {
+    /// Create a new driver URI adaptor.
     pub fn new(driver: D) -> Self {
         Self { driver }
     }
@@ -202,6 +224,7 @@ where
 }
 
 impl DriverUri<()> {
+    /// Create a new driver for the file system.
     pub fn file() -> Self {
         Self { driver: () }
     }
@@ -351,7 +374,6 @@ where
         self.deref().name()
     }
 
-    /// The Uri of the driver.
     fn scheme(&self) -> &str {
         self.deref().scheme()
     }

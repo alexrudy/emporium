@@ -1,3 +1,8 @@
+//! Traits for storage drivers.
+//!
+//! This module defines the traits that storage drivers must implement to be used
+//! with the storage crate.
+
 mod driver;
 mod error;
 

@@ -13,6 +13,8 @@ pub struct StorageError {
 }
 
 impl StorageError {
+    /// Create a new storage error from a downstream error and the name of the
+    /// storage engine.
     pub fn new<E: Into<Report>>(engine: &'static str, error: E) -> Self {
         Self {
             engine,
@@ -20,6 +22,8 @@ impl StorageError {
         }
     }
 
+    /// Return a boxed closure that creates a new storage error from a downstream
+    /// error, using the provided storage engine name.
     pub fn with<E>(engine: &'static str) -> Box<dyn FnOnce(E) -> StorageError>
     where
         E: Into<Report>,
