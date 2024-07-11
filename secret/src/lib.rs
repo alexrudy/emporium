@@ -1,10 +1,12 @@
+//! A simple wrapper for secret values that prevents them from being printed in debug output.
+
 use std::{borrow::Cow, env::VarError, fmt, ops::Deref};
 
 use http::{header::InvalidHeaderValue, HeaderValue};
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
-/// An API Key for a service. Generally any semi-secret item.
+/// A Secret value.
 ///
 /// This wrapper just prevents the key from appearing in debug reprs.
 ///
@@ -14,6 +16,7 @@ use zeroize::Zeroize;
 pub struct Secret(Cow<'static, str>);
 
 impl Secret {
+    /// Create a new Secret from the value of an environment variable.
     pub fn from_env(var: &str) -> Result<Self, VarError> {
         let value = std::env::var(var)?;
         Ok(Secret(value.into()))
@@ -48,23 +51,26 @@ impl fmt::Debug for Secret {
 }
 
 impl Secret {
-    /// Expose the underlying value of this API Key
+    /// Expose the underlying value as a string slice.
     pub fn revealed(&self) -> &str {
         self.0.deref()
     }
 
+    /// Convert the value into a HeaderValue, marking it as sensitive.
     pub fn to_header(&self) -> Result<HeaderValue, InvalidHeaderValue> {
         let mut header = HeaderValue::try_from(self.revealed())?;
         header.set_sensitive(true);
         Ok(header)
     }
 
+    /// Convert the value into a HeaderValue, marking it as sensitive, in the format "Bearer {value}".
     pub fn bearer(&self) -> Result<HeaderValue, InvalidHeaderValue> {
         let mut header = HeaderValue::try_from(format!("Bearer {}", self.revealed()))?;
         header.set_sensitive(true);
         Ok(header)
     }
 
+    /// Convert a string into a Secret.
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         Secret(s.to_owned().into())

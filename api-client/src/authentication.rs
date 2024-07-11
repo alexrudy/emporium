@@ -80,8 +80,10 @@ impl BearerAuth {
 
     /// Get the header value for the Bearer token.
     pub fn header_value(&self) -> HeaderValue {
-        let mut header_value: HeaderValue =
-            format!("Bearer {}", self.0.revealed()).parse().unwrap();
+        let mut header_value: HeaderValue = self
+            .0
+            .bearer()
+            .expect("bearer token is a valid HTTP header value");
         header_value.set_sensitive(true);
         header_value
     }
