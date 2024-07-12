@@ -5,14 +5,14 @@ edition = "2021"
 license = "MIT"
 
 [dependencies]
-api-client = { path = "../api-client" }
+api-client = { path = "../../api-client" }
 arc-swap.workspace = true
 async-trait.workspace = true
 bytes.workspace = true
 camino = { workspace = true, features = ["serde1"] }
 chrono.workspace = true
 dashmap.workspace = true
-echocache = { path = "../echocache" }
+echocache = { path = "../../echocache" }
 eyre.workspace = true
 futures.workspace = true
 hex.workspace = true
@@ -25,7 +25,7 @@ sentry.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha1.workspace = true
-storage-driver.path = "../storage-driver"
+storage-driver.path = "../../storage-driver"
 thiserror.workspace = true
 tokio = { workspace = true, features = ["io-util", "fs"] }
 tokio-util = { workspace = true, features = ["io"] }

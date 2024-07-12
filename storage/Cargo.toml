@@ -6,7 +6,7 @@ license = "MIT"
 
 [dependencies]
 async-trait.workspace = true
-b2-client = { path = "../b2-client", optional = true }
+b2-client = { path = "../services/b2-client", optional = true }
 camino = { workspace = true, features = ["serde1"] }
 chrono.workspace = true
 eyre.workspace = true
