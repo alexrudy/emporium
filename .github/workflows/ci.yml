@@ -40,7 +40,7 @@ jobs:
           - name: cargo check
             run: cargo check --all-targets --all-features
           - name: cargo hack check
-            run: cargo hack check --no-private --feature-powerset --no-dev-deps --skip docs,axum,sni,tls-ring,tls-aws-lc
+            run: cargo hack check --no-private --feature-powerset --no-dev-deps
             hack: true
           - name: cargo hack check --each-feature
             run: cargo hack check --no-private --each-feature --no-dev-deps
@@ -91,10 +91,10 @@ jobs:
           toolchain: ${{ matrix.toolchain }}
 
       - name: Build cargo tests
-        run: cargo test --features axum,sni,tls,tls-ring --no-run
+        run: cargo test --all-features --no-run
 
       - name: Run cargo test
-        run: cargo test --features axum,sni,tls,tls-ring
+        run: cargo test --all-features
 
   lints:
     name: Lints
@@ -114,11 +114,11 @@ jobs:
 
       - name: Run cargo clippy
         uses: actions-rs/clippy-check@v1
-        if: github.repository_owner == 'linode-sokka'
+        if: github.repository_owner == 'alexrudy'
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           args: --all-features -- -D warnings
 
       - name: Run cargo clippy
-        if: github.repository_owner != 'linode-sokka'
+        if: github.repository_owner != 'alexrudy'
         run: cargo clippy --all-features -- -D warnings
