@@ -85,11 +85,11 @@ pub struct B2ApplicationKey {
 impl B2ApplicationKey {
     /// Create a new B2 Application Key.
     pub fn new(key_id: Secret, key: Secret) -> Self {
-        if !key_id.revealed().starts_with("0") {
+        if !key_id.revealed().starts_with('0') {
             tracing::warn!("B2 key id does not start with 0");
         }
 
-        if !key.revealed().starts_with("K") {
+        if !key.revealed().starts_with('K') {
             tracing::warn!("B2 key does not start with K");
         }
 
