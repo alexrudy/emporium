@@ -70,7 +70,11 @@ impl B2Client {
     ) -> Self {
         B2Client {
             client: api_client::ApiClient::new_with_inner_service(
-                authorization.api_url.clone(),
+                authorization
+                    .api_url
+                    .to_string()
+                    .parse()
+                    .expect("Invalid API URL"),
                 authorization,
                 client,
             ),

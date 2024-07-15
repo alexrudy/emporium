@@ -8,6 +8,7 @@ members = [
     "secret",
     "storage",
     "storage-driver",
+    "services/linode",
 ]
 
 [workspace.dependencies]
@@ -40,6 +41,7 @@ thiserror = "1"
 tokio-util = "0.7"
 tower = "0.4"
 tracing = "0.1"
+url = "2"
 zeroize = "1"
 
 [workspace.dependencies.hyperdriver]

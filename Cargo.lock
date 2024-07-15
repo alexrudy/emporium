@@ -67,6 +67,7 @@ dependencies = [
  "tokio",
  "tower",
  "tracing",
+ "url",
 ]
 
 [[package]]
@@ -803,6 +804,21 @@ name = "libc"
 version = "0.2.155"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97b3888a4aecf77e811145cadf6eef5901f4782c53886191b2f693f24761847c"
+
+[[package]]
+name = "linode"
+version = "0.1.0"
+dependencies = [
+ "api-client",
+ "futures",
+ "http",
+ "hyperdriver",
+ "serde",
+ "serde_json",
+ "static_assertions",
+ "thiserror",
+ "tracing",
+]
 
 [[package]]
 name = "linux-raw-sys"
