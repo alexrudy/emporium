@@ -2,6 +2,7 @@
 name = "linode"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
 
 [dependencies]
 api-client = { path = "../../api-client" }

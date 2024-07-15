@@ -854,7 +854,7 @@ impl api_client::PaginationInfo for Paginator {
 pub type Paginated<T> = api_client::Paginated<BearerAuth, T, PaginatedData<T, Paginator>>;
 
 #[cfg(test)]
-#[allow(dead_code)]
+#[allow(dead_code, clippy::diverging_sub_expression)]
 mod tests {
     use super::*;
 
