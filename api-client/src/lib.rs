@@ -41,14 +41,19 @@ pub type ApiService = BoxCloneService<
 /// A boxed future used for API requests in the Client
 pub type BoxFuture<'a, T> = std::pin::Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
+#[derive(Debug)]
+struct InnerClient<A> {
+    base: ArcSwap<Uri>,
+    inner: hyperdriver::client::SharedClientService<hyperdriver::Body>,
+    authentication: Arc<ArcSwap<A>>,
+}
+
 /// A client for accessing APIs over HTTP / HTTPS
 ///
 /// Useful inner object to wrap for individual API clients.
 #[derive(Debug, Clone)]
 pub struct ApiClient<A> {
-    base: Arc<ArcSwap<Uri>>,
-    inner: hyperdriver::client::SharedClientService<hyperdriver::Body>,
-    authentication: Arc<ArcSwap<A>>,
+    inner: Arc<InnerClient<A>>,
 }
 
 impl<A> ApiClient<A>
@@ -64,9 +69,11 @@ where
             .build_service();
 
         ApiClient {
-            base: Arc::new(ArcSwap::new(Arc::new(base))),
-            inner,
-            authentication,
+            inner: Arc::new(InnerClient {
+                base: ArcSwap::new(Arc::new(base)),
+                inner,
+                authentication,
+            }),
         }
     }
 
@@ -92,30 +99,32 @@ where
             .service(inner);
 
         ApiClient {
-            base: Arc::new(ArcSwap::new(Arc::new(base))),
-            inner: service,
-            authentication,
+            inner: Arc::new(InnerClient {
+                base: ArcSwap::new(Arc::new(base)),
+                inner: service,
+                authentication,
+            }),
         }
     }
 
     /// Set the base URL for the client
     pub fn set_base(&self, base: Uri) {
-        self.base.store(Arc::new(base));
+        self.inner.base.store(Arc::new(base));
     }
 
     /// Replace the authentication method for the client
     pub fn refresh_auth(&self, authentication: A) {
-        self.authentication.store(Arc::new(authentication));
+        self.inner.authentication.store(Arc::new(authentication));
     }
 
     /// Get the current authentication method
     pub fn auth(&self) -> Guard<Arc<A>> {
-        self.authentication.as_ref().load()
+        self.inner.authentication.as_ref().load()
     }
 
     /// Get the inner service used to make HTTP requests
     pub fn inner(&self) -> &hyperdriver::client::SharedClientService<hyperdriver::Body> {
-        &self.inner
+        &self.inner.inner
     }
 }
 
@@ -130,27 +139,31 @@ impl<A> ApiClient<A>
 where
     A: Authentication,
 {
+    fn join_endpoint(&self, endpoint: &str) -> Uri {
+        (*self.inner.base.load_full()).clone().join(endpoint)
+    }
+
     /// Create a GET request builder for the client
-    pub fn get(&self, endpoint: &str) -> RequestBuilder<A> {
-        let url = (*self.base.load_full()).clone().join(endpoint);
+    pub fn get(&self, endpoint: &str) -> RequestBuilder {
+        let url = self.join_endpoint(endpoint);
         RequestBuilder::new(self.clone(), url, Method::GET)
     }
 
     /// Create a PUT request builder for the client
-    pub fn put(&self, endpoint: &str) -> RequestBuilder<A> {
-        let url = (*self.base.load_full()).clone().join(endpoint);
+    pub fn put(&self, endpoint: &str) -> RequestBuilder {
+        let url = self.join_endpoint(endpoint);
         RequestBuilder::new(self.clone(), url, Method::PUT)
     }
 
     /// Create a POST request builder for the client
-    pub fn post(&self, endpoint: &str) -> RequestBuilder<A> {
-        let url = (*self.base.load_full()).clone().join(endpoint);
+    pub fn post(&self, endpoint: &str) -> RequestBuilder {
+        let url = self.join_endpoint(endpoint);
         RequestBuilder::new(self.clone(), url, Method::POST)
     }
 
     /// Create a DELETE request builder for the client
-    pub fn delete(&self, endpoint: &str) -> RequestBuilder<A> {
-        let url = (*self.base.load_full()).clone().join(endpoint);
+    pub fn delete(&self, endpoint: &str) -> RequestBuilder {
+        let url = self.join_endpoint(endpoint);
         RequestBuilder::new(self.clone(), url, Method::DELETE)
     }
 
@@ -161,7 +174,7 @@ where
     ) -> Result<Response, hyperdriver::client::Error> {
         let parts = req.parts();
 
-        let response = self.inner.clone().oneshot(req).await?;
+        let response = self.inner.inner.clone().oneshot(req).await?;
         Ok(Response::new(parts, response))
     }
 }

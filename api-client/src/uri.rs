@@ -2,6 +2,62 @@
 
 use camino::Utf8Path;
 use http::Uri;
+use thiserror::Error;
+use url::Url;
+
+/// The provided URL cannot be a base URL,
+/// and so is not valid as the base part of an API URL.
+#[derive(Debug, Error)]
+#[error("cannot be a base URL: {0}")]
+pub struct CannotBeABase(url::Url);
+
+/// Errors that can occur when parsing a URI.
+#[derive(Debug, Error)]
+pub enum ParseUriError {
+    /// An error occurred while parsing the URI.
+    #[error(transparent)]
+    Url(#[from] url::ParseError),
+
+    /// The provided URL cannot be a base URL,
+    #[error(transparent)]
+    CannotBeABase(#[from] CannotBeABase),
+
+    /// The URI is invalid, but URL parsing succeded.
+    #[error("invalid URI: {0}")]
+    Invalid(http::uri::InvalidUri),
+}
+
+/// Convert a value into a URI.
+pub trait IntoUri {
+    /// Convert the value into a URI.
+    fn into_uri(self) -> Result<Uri, ParseUriError>;
+}
+
+impl IntoUri for Url {
+    fn into_uri(self) -> Result<Uri, ParseUriError> {
+        if self.cannot_be_a_base() {
+            return Err(CannotBeABase(self).into());
+        }
+
+        match self.as_str().parse() {
+            Ok(uri) => Ok(uri),
+            Err(e) => Err(ParseUriError::Invalid(e)),
+        }
+    }
+}
+
+impl IntoUri for Uri {
+    fn into_uri(self) -> Result<Uri, ParseUriError> {
+        Ok(self)
+    }
+}
+
+impl IntoUri for &str {
+    fn into_uri(self) -> Result<Uri, ParseUriError> {
+        let url: Url = self.parse()?;
+        url.into_uri()
+    }
+}
 
 /// Serialize and Deserialize a URI to and from a string.
 pub mod serde {
@@ -30,6 +86,9 @@ pub mod serde {
 pub trait UriExtension {
     /// Join a path to a URI.
     fn join<P: AsRef<str>>(self, path: P) -> Uri;
+
+    /// Replace a query parameter in a URI.
+    fn replace_query(self, key: &str, value: &str) -> Uri;
 }
 
 impl UriExtension for Uri {
@@ -41,6 +100,24 @@ impl UriExtension for Uri {
             http::uri::PathAndQuery::from_maybe_shared(joined.to_string()).unwrap()
         });
         Uri::from_parts(parts).unwrap()
+    }
+
+    fn replace_query(self, key: &str, value: &str) -> Uri {
+        let mut url = Url::parse(&self.to_string()).expect("valid url");
+
+        // Get a copy of the current query pairs without the target key.
+        let current = url
+            .query_pairs()
+            .filter(|(k, _)| k != key)
+            .map(|(k, v)| (k.into_owned(), v.into_owned()))
+            .collect::<Vec<_>>();
+
+        {
+            let mut query = url.query_pairs_mut();
+            query.clear().extend_pairs(current).append_pair(key, value);
+        }
+
+        url.to_string().parse().expect("valid uri")
     }
 }
 

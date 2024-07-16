@@ -8,6 +8,7 @@ members = [
     "secret",
     "storage",
     "storage-driver",
+    "services/linode",
 ]
 
 [workspace.dependencies]
@@ -40,11 +41,11 @@ thiserror = "1"
 tokio-util = "0.7"
 tower = "0.4"
 tracing = "0.1"
+url = "2"
 zeroize = "1"
 
 [workspace.dependencies.hyperdriver]
-git = "https://github.com/alexrudy/hyperdriver.git"
-branch = "client/common-error-type"
+version = "0.5"
 features = ["stream", "tls", "server", "client", "discovery", "incoming", "sni"]
 
 [workspace.dependencies.tokio]

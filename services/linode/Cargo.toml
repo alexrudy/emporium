@@ -1,0 +1,21 @@
+[package]
+name = "linode"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+api-client = { path = "../../api-client" }
+futures.workspace = true
+http.workspace = true
+hyperdriver.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+static_assertions.workspace = true
+
+[lints]
+workspace = true

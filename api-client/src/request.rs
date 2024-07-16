@@ -2,10 +2,14 @@
 
 use std::time::Duration;
 
-use http::{header::HeaderValue, HeaderName, Uri};
+use http::Uri;
+use http::{header::HeaderValue, HeaderName};
+use serde::Serialize;
+use tower::ServiceExt as _;
 
 use crate::basic_auth;
-use crate::{response::Response, ApiClient, Authentication};
+
+use crate::{response::Response, ApiClient};
 
 type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
 type Result<T, E = BoxError> = std::result::Result<T, E>;
@@ -102,19 +106,19 @@ impl RequestExt for http::request::Builder {
 
 /// Builder for HTTP requests on an API client
 #[derive(Debug)]
-pub struct RequestBuilder<A> {
+pub struct RequestBuilder {
     req: http::request::Builder,
-    client: ApiClient<A>,
+    client: hyperdriver::client::SharedClientService<hyperdriver::Body>,
     body: Option<hyperdriver::Body>,
     timeout: Option<Duration>,
 }
 
-impl<A> RequestBuilder<A> {
+impl RequestBuilder {
     /// Create a new request builder
-    pub fn new(client: ApiClient<A>, uri: Uri, method: http::Method) -> Self {
+    pub fn new<A>(client: ApiClient<A>, uri: Uri, method: http::Method) -> Self {
         Self {
             req: http::Request::builder().method(method).uri(uri),
-            client,
+            client: client.inner.inner.clone(),
             body: None,
             timeout: None,
         }
@@ -167,22 +171,36 @@ impl<A> RequestBuilder<A> {
         }
     }
 
+    /// Set the body of the request as JSON
+    pub fn json<D: Serialize>(self, body: D) -> Result<Self> {
+        let body = bytes::Bytes::from(serde_json::to_vec(&body)?);
+        Ok(self.body(body))
+    }
+
     /// Send the request and return the response
-    pub async fn send(self) -> Result<Response>
-    where
-        A: Authentication,
-    {
+    pub async fn send(self) -> Result<Response> {
         let req = self
             .req
             .body(self.body.unwrap_or_else(hyperdriver::Body::empty))?;
 
+        let parts = req.parts();
+        let future = self.client.oneshot(req);
+
         if let Some(timeout) = self.timeout {
-            match tokio::time::timeout(timeout, self.client.execute(req)).await {
-                Ok(res) => Ok(res?),
+            match tokio::time::timeout(timeout, future).await {
+                Ok(res) => Ok(res.map(|response| Response::new(parts, response))?),
                 Err(_) => Err("Request timed out".into()),
             }
         } else {
-            Ok(self.client.execute(req).await?)
+            Ok(future
+                .await
+                .map(|response| Response::new(parts, response))?)
         }
+    }
+
+    /// Build the request
+    pub fn build(self) -> Result<http::Request<hyperdriver::Body>, http::Error> {
+        self.req
+            .body(self.body.unwrap_or_else(hyperdriver::Body::empty))
     }
 }

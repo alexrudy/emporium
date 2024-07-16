@@ -67,6 +67,7 @@ dependencies = [
  "tokio",
  "tower",
  "tracing",
+ "url",
 ]
 
 [[package]]
@@ -677,8 +678,9 @@ dependencies = [
 
 [[package]]
 name = "hyperdriver"
-version = "0.5.0"
-source = "git+https://github.com/alexrudy/hyperdriver.git?branch=client/common-error-type#f0c959eecca3c03360ad0d91286de1e5bd0d71e3"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "24374ef12c956de2ffc870328938351603a55dfc8c1832d536e21d66424d3af4"
 dependencies = [
  "bytes",
  "camino",
@@ -803,6 +805,21 @@ name = "libc"
 version = "0.2.155"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97b3888a4aecf77e811145cadf6eef5901f4782c53886191b2f693f24761847c"
+
+[[package]]
+name = "linode"
+version = "0.1.0"
+dependencies = [
+ "api-client",
+ "futures",
+ "http",
+ "hyperdriver",
+ "serde",
+ "serde_json",
+ "static_assertions",
+ "thiserror",
+ "tracing",
+]
 
 [[package]]
 name = "linux-raw-sys"
@@ -1312,9 +1329,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-native-certs"
-version = "0.7.0"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f1fb85efa936c42c6d5fc28d2629bb51e4b2f4b8a5211e297d599cc5a093792"
+checksum = "a88d6d420651b496bdd98684116959239430022a115c1240e6c3993be0b15fba"
 dependencies = [
  "openssl-probe",
  "rustls-pemfile",
