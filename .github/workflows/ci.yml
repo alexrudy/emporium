@@ -113,12 +113,4 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run cargo clippy
-        uses: actions-rs/clippy-check@v1
-        if: github.repository_owner == 'alexrudy'
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-features -- -D warnings
-
-      - name: Run cargo clippy
-        if: github.repository_owner != 'alexrudy'
         run: cargo clippy --all-features -- -D warnings
