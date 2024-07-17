@@ -1,0 +1,27 @@
+[package]
+name = "octocat"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+api-client.path = "../../api-client"
+camino.workspace = true
+chrono.workspace = true
+http.workspace = true
+hyperdriver.workspace = true
+jaws.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+storage.path = "../../storage"
+thiserror.workspace = true
+tower-http.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }
+tracing-subscriber.workspace = true
+eyre.workspace = true
+
+[lints]
+workspace = true

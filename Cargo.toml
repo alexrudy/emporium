@@ -9,6 +9,7 @@ members = [
     "storage",
     "storage-driver",
     "services/linode",
+    "services/octocat",
 ]
 
 [workspace.dependencies]
@@ -25,6 +26,7 @@ hex = "0.4"
 http = "1"
 http-body = "1"
 http-body-util = "*"
+jaws = { version = "1.0.0", features = ["rand", "spki", "der"] }
 mime = "0.3"
 parking_lot = "0.12"
 percent-encoding = "2"
@@ -40,8 +42,10 @@ tempfile = "3"
 thiserror = "1"
 tokio-util = "0.7"
 tower = "0.4"
+tower-http = "0.5"
 tracing = "0.1"
 url = "2"
+yacme = { version = "5.0.0-rc.2" }
 zeroize = "1"
 
 [workspace.dependencies.hyperdriver]
