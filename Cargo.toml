@@ -10,6 +10,7 @@ members = [
     "storage-driver",
     "services/linode",
     "services/octocat",
+    "services/tailscale",
 ]
 
 [workspace.dependencies]
@@ -27,6 +28,7 @@ http = "1"
 http-body = "1"
 http-body-util = "*"
 jaws = { version = "1.0.0", features = ["rand", "spki", "der"] }
+indoc = "2"
 mime = "0.3"
 parking_lot = "0.12"
 percent-encoding = "2"

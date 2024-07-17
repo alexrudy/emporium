@@ -1,0 +1,21 @@
+[package]
+name = "tailscale"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+api-client.path = "../../api-client"
+camino.workspace = true
+eyre.workspace = true
+http.workspace = true
+serde = { workspace = true, features = ["derive"] }
+thiserror.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+indoc.workspace = true
+
+
+[lints]
+workspace = true
