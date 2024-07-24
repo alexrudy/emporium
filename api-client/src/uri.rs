@@ -1,5 +1,6 @@
 //! URI utilities.
 
+use ::serde::Serialize;
 use camino::Utf8Path;
 use http::Uri;
 use thiserror::Error;
@@ -25,6 +26,22 @@ pub enum ParseUriError {
     /// The URI is invalid, but URL parsing succeded.
     #[error("invalid URI: {0}")]
     Invalid(http::uri::InvalidUri),
+}
+
+/// Error appending query parameters to a URI.
+#[derive(Debug, Error)]
+pub enum QueryError {
+    /// The new query parameters could not be serialized.
+    #[error("failed to serialize query parameters: {0}")]
+    Serialize(#[from] serde_urlencoded::ser::Error),
+
+    /// The URI is invalid with new query parameters.
+    #[error("uri is not valid: {0}")]
+    InvalidUriParts(#[from] http::uri::InvalidUriParts),
+
+    /// The query parameters are invalid
+    #[error("uri is not valid: {0}")]
+    InvalidUri(#[from] http::uri::InvalidUri),
 }
 
 /// Convert a value into a URI.
@@ -89,6 +106,12 @@ pub trait UriExtension {
 
     /// Replace a query parameter in a URI.
     fn replace_query(self, key: &str, value: &str) -> Uri;
+
+    /// Append query parameters to a URI.
+    fn append_query<T: Serialize + ?Sized>(self, query: &T) -> Result<Uri, QueryError>;
+
+    /// Remove all query parameters from a URI.
+    fn clear_query(self) -> Uri;
 }
 
 impl UriExtension for Uri {
@@ -118,6 +141,40 @@ impl UriExtension for Uri {
         }
 
         url.to_string().parse().expect("valid uri")
+    }
+
+    fn append_query<T: Serialize + ?Sized>(self, query: &T) -> Result<Uri, QueryError> {
+        let qs = serde_urlencoded::to_string(query)?;
+        let mut parts = self.into_parts();
+
+        let mut query = String::new();
+        let mut path = String::new();
+
+        if let Some(pq) = parts.path_and_query {
+            path.push_str(pq.path());
+            if let Some(q) = pq.query() {
+                query.push_str(q);
+                if !(qs.is_empty() && q.is_empty()) {
+                    query.push('&');
+                }
+            }
+        }
+        query.push_str(&qs);
+
+        let pq = format!("{}?{}", path, query);
+        parts.path_and_query = Some(http::uri::PathAndQuery::from_maybe_shared(pq)?);
+
+        Ok(http::Uri::from_parts(parts)?)
+    }
+
+    #[allow(clippy::unnecessary_to_owned)]
+    fn clear_query(self) -> Uri {
+        let mut parts = self.into_parts();
+        parts.path_and_query = parts
+            .path_and_query
+            .as_ref()
+            .map(|pq| http::uri::PathAndQuery::from_maybe_shared(pq.path().to_owned()).unwrap());
+        Uri::from_parts(parts).unwrap()
     }
 }
 
@@ -170,5 +227,59 @@ mod tests {
         let uri = "http://example.com/bar/".parse::<Uri>().unwrap();
         let joined = uri.join("");
         assert_eq!(joined.to_string(), "http://example.com/bar/");
+    }
+
+    #[test]
+    fn test_append_query() {
+        let uri = "http://example.com".parse::<Uri>().unwrap();
+        let appended = uri.append_query(&[("foo", "bar")]).unwrap();
+        assert_eq!(appended.to_string(), "http://example.com/?foo=bar");
+
+        let uri = "http://example.com/?baz=qux".parse::<Uri>().unwrap();
+        let appended = uri.append_query(&[("foo", "bar")]).unwrap();
+        assert_eq!(appended.to_string(), "http://example.com/?baz=qux&foo=bar");
+
+        let uri = "http://example.com/?baz=qux".parse::<Uri>().unwrap();
+        let appended = uri.append_query(&[("foo", "bar"), ("foo", "baz")]).unwrap();
+        assert_eq!(
+            appended.to_string(),
+            "http://example.com/?baz=qux&foo=bar&foo=baz"
+        );
+    }
+
+    #[test]
+    fn test_clear_query() {
+        let uri = "http://example.com".parse::<Uri>().unwrap();
+        let cleared = uri.clear_query();
+        assert_eq!(cleared.to_string(), "http://example.com/");
+
+        let uri = "http://example.com/?foo=bar".parse::<Uri>().unwrap();
+        let cleared = uri.clear_query();
+        assert_eq!(cleared.to_string(), "http://example.com/");
+
+        let uri = "http://example.com/?foo=bar&baz=qux"
+            .parse::<Uri>()
+            .unwrap();
+        let cleared = uri.clear_query();
+        assert_eq!(cleared.to_string(), "http://example.com/");
+    }
+
+    #[test]
+    fn test_replace_query() {
+        let uri = "http://example.com".parse::<Uri>().unwrap();
+        let replaced = uri.replace_query("foo", "bar");
+        assert_eq!(replaced.to_string(), "http://example.com/?foo=bar");
+
+        let uri = "http://example.com?foo=baz".parse::<Uri>().unwrap();
+        let replaced = uri.replace_query("foo", "bar");
+        assert_eq!(replaced.to_string(), "http://example.com/?foo=bar");
+
+        let uri = "http://example.com?foo=baz&baz=qux".parse::<Uri>().unwrap();
+        let replaced = uri.replace_query("foo", "bar");
+        assert_eq!(replaced.to_string(), "http://example.com/?baz=qux&foo=bar");
+
+        let uri = "http://example.com?foo=baz&baz=qux".parse::<Uri>().unwrap();
+        let replaced = uri.replace_query("baz", "bar");
+        assert_eq!(replaced.to_string(), "http://example.com/?foo=baz&baz=bar");
     }
 }

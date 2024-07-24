@@ -9,6 +9,7 @@ use tower::ServiceExt as _;
 
 use crate::basic_auth;
 
+use crate::uri::UriExtension;
 use crate::{response::Response, ApiClient};
 
 type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
@@ -155,6 +156,13 @@ impl RequestBuilder {
     /// Get a mutable reference to the headers of the request
     pub fn headers_mut(&mut self) -> Option<&mut http::header::HeaderMap> {
         self.req.headers_mut()
+    }
+
+    /// Add query parameters to the request
+    pub fn query<T: Serialize + ?Sized>(mut self, query: &T) -> Result<Self> {
+        let uri = self.req.uri_ref().expect("missing uri").clone();
+        self.req = self.req.uri(uri.append_query(query)?);
+        Ok(self)
     }
 
     /// Set the timeout for the request
