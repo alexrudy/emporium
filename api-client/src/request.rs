@@ -186,10 +186,11 @@ impl RequestBuilder {
     }
 
     /// Send the request and return the response
-    pub async fn send(self) -> Result<Response> {
+    pub async fn send(self) -> Result<Response, hyperdriver::client::Error> {
         let req = self
             .req
-            .body(self.body.unwrap_or_else(hyperdriver::Body::empty))?;
+            .body(self.body.unwrap_or_else(hyperdriver::Body::empty))
+            .expect("valid request");
 
         let parts = req.parts();
         let future = self.client.oneshot(req);
@@ -197,7 +198,7 @@ impl RequestBuilder {
         if let Some(timeout) = self.timeout {
             match tokio::time::timeout(timeout, future).await {
                 Ok(res) => Ok(res.map(|response| Response::new(parts, response))?),
-                Err(_) => Err("Request timed out".into()),
+                Err(_) => Err(hyperdriver::client::Error::RequestTimeout),
             }
         } else {
             Ok(future

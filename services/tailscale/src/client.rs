@@ -90,7 +90,7 @@ pub struct Device {
 #[derive(Debug, Error)]
 pub enum TailscaleAPIError {
     #[error("Request error: {0}")]
-    RequestError(#[source] Box<dyn std::error::Error + Send + Sync>),
+    RequestError(#[source] hyperdriver::client::Error),
 
     #[error("Response error: {0}")]
     BodyError(#[source] Box<dyn std::error::Error + Send + Sync>),

@@ -15,6 +15,7 @@ use tower::util::BoxCloneService;
 use tower::ServiceExt;
 
 mod authentication;
+pub mod error;
 mod paginate;
 pub mod request;
 pub mod response;
