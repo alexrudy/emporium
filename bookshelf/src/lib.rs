@@ -162,7 +162,7 @@ impl Bookshelf {
 
     /// Get a volume by name, creating it if it does not exist.
     #[instrument(level="debug", skip(self), fields(bucket = %self.bucket, prefix = ?self.prefix))]
-    pub async fn bookshelf(&self, name: &str) -> Result<Volume, Error> {
+    pub async fn volume(&self, name: &str) -> Result<Volume, Error> {
         //TODO: Don't list all volumes, just check if the volume exists.
         let shelves = self.list().await?;
 
@@ -511,7 +511,7 @@ mod test {
         let storage = Storage::new(memory);
 
         let case = Bookshelf::new(storage.clone(), bucket.to_string(), prefix.clone());
-        let bookshelf = case.bookshelf("shelf/parts").await.unwrap();
+        let bookshelf = case.volume("shelf/parts").await.unwrap();
 
         assert_eq!(bookshelf.list(), BTreeSet::new());
         assert_eq!(bookshelf.bucket(), "bucket");
@@ -562,7 +562,7 @@ mod test {
 
         eprintln!("paths: {:#?}", storage.list(bucket, None).await.unwrap());
 
-        let bookshelf = case.bookshelf("shelf/parts").await.unwrap();
+        let bookshelf = case.volume("shelf/parts").await.unwrap();
         eprintln!("paths: {:#?}", bookshelf.inner.paths);
 
         let epoch = epoch!(2020 / 1 / 1);
@@ -619,7 +619,7 @@ mod test {
 
         eprintln!("paths: {:#?}", storage.list(bucket, None).await.unwrap());
 
-        let bookshelf = case.bookshelf("shelf/deep/parts").await.unwrap();
+        let bookshelf = case.volume("shelf/deep/parts").await.unwrap();
         eprintln!("paths: {:#?}", bookshelf.inner.paths);
 
         let epoch = epoch!(2020 / 1 / 1);
