@@ -206,6 +206,15 @@ impl Response {
     pub async fn into_error(self) -> HttpResponseError {
         HttpResponseError::from_response(self).await
     }
+
+    /// Convert the `Response` into an `HttpResponseError` instance if the response status is not a success status.
+    pub async fn error_for_status(self) -> Result<Self, HttpResponseError> {
+        if self.status().is_success() {
+            Ok(self)
+        } else {
+            Err(self.into_error().await)
+        }
+    }
 }
 
 impl ResponseBodyExt for Response {

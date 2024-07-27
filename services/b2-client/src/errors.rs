@@ -112,7 +112,7 @@ pub enum B2RequestError {
 
     /// An error occurred while making a request to the B2 API.
     #[error("client: {0}")]
-    Client(#[from] hyperdriver::client::Error),
+    Client(#[from] api_client::Error),
 
     /// The request encountered too many errors during retries.
     #[error("Retries exhausted")]

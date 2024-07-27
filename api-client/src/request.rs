@@ -8,12 +8,13 @@ use serde::Serialize;
 use tower::ServiceExt as _;
 
 use crate::basic_auth;
+use crate::error::Error;
 
 use crate::uri::UriExtension;
 use crate::{response::Response, ApiClient};
 
-type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
-type Result<T, E = BoxError> = std::result::Result<T, E>;
+// type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
+type Result<T, E = Error> = std::result::Result<T, E>;
 
 /// Extension trait for HTTP requests
 pub trait RequestExt {
@@ -159,7 +160,7 @@ impl RequestBuilder {
     }
 
     /// Add query parameters to the request
-    pub fn query<T: Serialize + ?Sized>(mut self, query: &T) -> Result<Self> {
+    pub fn query<T: Serialize + ?Sized>(mut self, query: &T) -> Result<Self, Error> {
         let uri = self.req.uri_ref().expect("missing uri").clone();
         self.req = self.req.uri(uri.append_query(query)?);
         Ok(self)
@@ -181,7 +182,9 @@ impl RequestBuilder {
 
     /// Set the body of the request as JSON
     pub fn json<D: Serialize>(self, body: D) -> Result<Self> {
-        let body = bytes::Bytes::from(serde_json::to_vec(&body)?);
+        let body = bytes::Bytes::from(
+            serde_json::to_vec(&body).map_err(|err| Error::ResponseBody(err.into()))?,
+        );
         Ok(self.body(body))
     }
 

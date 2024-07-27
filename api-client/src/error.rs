@@ -22,6 +22,14 @@ pub enum Error {
     /// An error occured while sending the request
     #[error(transparent)]
     Request(hyperdriver::client::Error),
+
+    /// An error occured while building the request
+    #[error(transparent)]
+    RequestBuilder(#[from] http::Error),
+
+    /// An error occured serializing the query parameters
+    #[error("Error serializing query parameters: {0}")]
+    QuerySerialization(#[from] crate::uri::QueryError),
 }
 
 /// A server returned an error response
