@@ -15,6 +15,7 @@ use tower::util::BoxCloneService;
 use tower::ServiceExt;
 
 mod authentication;
+pub mod error;
 mod paginate;
 pub mod request;
 pub mod response;
@@ -24,6 +25,7 @@ pub mod uri;
 pub use self::authentication::{
     basic_auth, Authentication, AuthenticationLayer, AuthenticationService, BasicAuth, BearerAuth,
 };
+pub use self::error::Error;
 pub use self::paginate::{Paginated, PaginatedData, PaginationInfo, Paginator};
 pub use self::request::RequestBuilder;
 pub use self::request::RequestExt;
@@ -168,13 +170,16 @@ where
     }
 
     /// Execute a request and return the response
-    pub async fn execute(
-        &self,
-        req: hyperdriver::body::Request,
-    ) -> Result<Response, hyperdriver::client::Error> {
+    pub async fn execute(&self, req: hyperdriver::body::Request) -> Result<Response, Error> {
         let parts = req.parts();
 
-        let response = self.inner.inner.clone().oneshot(req).await?;
+        let response = self
+            .inner
+            .inner
+            .clone()
+            .oneshot(req)
+            .await
+            .map_err(Error::Request)?;
         Ok(Response::new(parts, response))
     }
 }

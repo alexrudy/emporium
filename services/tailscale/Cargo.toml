@@ -9,6 +9,7 @@ api-client.path = "../../api-client"
 camino.workspace = true
 eyre.workspace = true
 http.workspace = true
+hyperdriver.workspace = true
 serde = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
 tokio.workspace = true

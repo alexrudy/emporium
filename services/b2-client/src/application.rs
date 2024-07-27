@@ -21,7 +21,7 @@ const B2_KEY_ENV: &str = "B2_KEY";
 #[derive(Debug, Error)]
 pub enum AuthenticationErrorKind {
     #[error(transparent)]
-    Client(#[from] hyperdriver::client::Error),
+    Client(#[from] api_client::Error),
 
     #[error("deserialization error: {0}")]
     Deserialization(#[source] serde_json::Error, String),
@@ -279,7 +279,10 @@ impl B2ApplicationKey {
             .body(Body::empty())
             .unwrap();
 
-        let resp = client.oneshot(request).await?;
+        let resp = client
+            .oneshot(request)
+            .await
+            .map_err(api_client::Error::Request)?;
 
         let text = resp.text().await.map_err(AuthenticationErrorKind::Body)?;
         let auth = serde_json::from_str(&text)

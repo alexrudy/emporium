@@ -76,7 +76,7 @@ impl LinodeClient {
     async fn execute(&self, request: http::Request<Body>) -> Result<String> {
         let resp = self.inner.execute(request).await?;
         let status = resp.status();
-        let body = resp.text().await.map_err(LinodeError::Body)?;
+        let body = resp.text().await.map_err(api_client::Error::ResponseBody)?;
 
         if !status.is_success() {
             tracing::error!("Error response from linode: {:?}", status);
@@ -92,7 +92,9 @@ impl LinodeClient {
     where
         T: DeserializeOwned + Send + 'static,
     {
-        let body = self.execute(builder.build()?).await?;
+        let body = self
+            .execute(builder.build().map_err(api_client::Error::from)?)
+            .await?;
         Ok(serde_json::de::from_str(&body)?)
     }
 
@@ -127,7 +129,7 @@ impl LinodeClient {
             .inner
             .post(endpoint)
             .json(data)
-            .map_err(LinodeError::Body)?;
+            .map_err(api_client::Error::from)?;
         self.execute_and_deserialize(request).await
     }
 
@@ -140,7 +142,7 @@ impl LinodeClient {
             .inner
             .put(endpoint)
             .json(data)
-            .map_err(LinodeError::Body)?;
+            .map_err(api_client::Error::from)?;
         self.execute_and_deserialize(request).await
     }
 
@@ -157,7 +159,7 @@ impl LinodeClient {
     pub async fn list_lindoe_instances(&self) -> impl Stream<Item = Result<Instance>> {
         self.get_paginated("linode/instances")
             .map_ok(Instance::new)
-            .map_err(LinodeError::Body)
+            .map_err(|error| LinodeError::Request(api_client::Error::ResponseBody(error)))
     }
 
     /// List all domains managed by Linode.
@@ -181,7 +183,7 @@ impl LinodeClient {
             .await
         {
             Some(Ok(domain)) => Ok(Some(domain)),
-            Some(Err(err)) => Err(LinodeError::Body(err)),
+            Some(Err(err)) => Err(api_client::Error::ResponseBody(err).into()),
             None => Ok(None),
         }
     }
@@ -197,7 +199,7 @@ impl LinodeClient {
 
         let records: Paginated<GetDomainRecord> = self.get_paginated(&endpoint);
         records.map(move |record| {
-            let record = record.map_err(LinodeError::Body)?;
+            let record = record.map_err(api_client::Error::ResponseBody)?;
             Ok(Record::new(record, id))
         })
     }
@@ -276,8 +278,6 @@ impl LinodeClient {
     }
 }
 
-type BoxError = Box<dyn std::error::Error + Send + Sync>;
-
 /// Errors that can occur when interacting with the Linode API.
 #[derive(Debug, Error)]
 pub enum LinodeError {
@@ -285,17 +285,9 @@ pub enum LinodeError {
     #[error("Linode API Error: {0}")]
     ApiError(#[from] LinodeApiError),
 
-    /// An error occured while constructing the HTTP request.
-    #[error("HTTP Builder Error: {0}")]
-    Builder(#[from] http::Error),
-
     /// An error occured while sending the HTTP request.
     #[error("Request Error: {0}")]
-    Request(#[from] hyperdriver::client::Error),
-
-    /// An error occured while parsing the response body.
-    #[error("Body Error: {0}")]
-    Body(#[source] BoxError),
+    Request(#[from] api_client::error::Error),
 
     /// An error occured while deserializing the response body.
     #[error(transparent)]

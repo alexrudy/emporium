@@ -1,5 +1,6 @@
 //! Response types and traits for working with HTTP responses.
 
+use crate::error::HttpResponseError;
 use hyperdriver::Body;
 
 mod futures {
@@ -199,6 +200,20 @@ impl Response {
     /// Convert the `Response` into an `http::Response` instance.
     pub fn into_response(self) -> http::Response<Body> {
         http::Response::from_parts(self.response, self.body)
+    }
+
+    /// Convert the `Response` into an `HttpResponseError` instance.
+    pub async fn into_error(self) -> HttpResponseError {
+        HttpResponseError::from_response(self).await
+    }
+
+    /// Convert the `Response` into an `HttpResponseError` instance if the response status is not a success status.
+    pub async fn error_for_status(self) -> Result<Self, HttpResponseError> {
+        if self.status().is_success() {
+            Ok(self)
+        } else {
+            Err(self.into_error().await)
+        }
     }
 }
 
