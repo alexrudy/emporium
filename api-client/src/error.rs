@@ -6,6 +6,8 @@ use thiserror::Error;
 
 use crate::response::{Response, ResponseBodyExt as _, ResponseExt as _};
 
+// Use a BoxError for body error types, since knowing the specific
+// error type can be kind of a pain in the butt.
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
 /// An error occured while sending or recieving an HTTP request
@@ -13,7 +15,7 @@ type BoxError = Box<dyn std::error::Error + Send + Sync>;
 pub enum Error {
     /// An HTTP response error occured
     #[error(transparent)]
-    Response(HttpResponseError),
+    Response(#[from] HttpResponseError),
 
     /// An error occured while recieving the response body
     #[error("Error reading response body: {0}")]
@@ -21,7 +23,7 @@ pub enum Error {
 
     /// An error occured while sending the request
     #[error(transparent)]
-    Request(hyperdriver::client::Error),
+    Request(#[from] hyperdriver::client::Error),
 
     /// An error occured while building the request
     #[error(transparent)]
