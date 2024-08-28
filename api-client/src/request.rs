@@ -185,7 +185,14 @@ impl RequestBuilder {
         let body = bytes::Bytes::from(
             serde_json::to_vec(&body).map_err(|err| Error::ResponseBody(err.into()))?,
         );
-        Ok(self.body(body))
+
+        Ok(Self {
+            body: Some(hyperdriver::Body::from(body)),
+            req: self
+                .req
+                .header(http::header::CONTENT_TYPE, "application/json"),
+            ..self
+        })
     }
 
     /// Send the request and return the response

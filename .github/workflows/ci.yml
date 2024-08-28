@@ -8,6 +8,7 @@ name: CI
 
 env:
   RUSTDOCFLAGS: "-Dwarnings"
+  CARGO_TERM_COLOR: always
 
 jobs:
   build:

@@ -133,7 +133,7 @@ impl Storage {
     }
 
     /// Get the name of the driver.
-    pub fn name(&self) -> &str {
+    pub fn name(&self) -> &'static str {
         self.driver.name()
     }
 
