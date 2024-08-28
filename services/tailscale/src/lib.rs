@@ -73,43 +73,56 @@ impl IpVersion {
 }
 
 /// Get the IP addresses of the current host
-pub async fn get_host_ip_addresses() -> Result<TailscaleAddress> {
+pub async fn get_host_tailscale_addresses() -> Result<TailscaleAddress> {
     let stdout = run_tailscale_command(&["ip"]).await?;
     stdout.parse()
 }
 
-async fn run_tailscale_command(args: &[&str]) -> Result<String> {
+/// Run a single command and return the output
+async fn run_command(command: &str, args: &[&str]) -> Result<String> {
     let current_directory = Utf8PathBuf::from_path_buf(std::env::current_dir()?)
         .map_err(|p| eyre!("Can't make current directory utf-8: {:?}", p))?;
-    let mut cmd = std::process::Command::new("tailscale");
+    let mut cmd = std::process::Command::new(command);
     cmd.current_dir(current_directory);
     cmd.args(args);
 
+    let name = command.to_owned();
+
     let stdout = tokio::task::spawn_blocking(move || {
-        let output = cmd.output().expect("Failed to execute tailscale");
+        let output = cmd
+            .output()
+            .wrap_err_with(|| format!("Failed to spawn {name}"))?;
         if !output.status.success() {
-            return Err(eyre!("Failed to execute tailscale: {:?}", output));
+            return Err(eyre!("Failed to execute {name}: {output:?}"));
         }
 
-        Ok(String::from_utf8(output.stdout).expect("Failed to parse tailscale output"))
+        Ok(String::from_utf8(output.stdout).expect("Command {name} output is not utf-8"))
     })
-    .await??;
+    .await
+    .wrap_err_with(|| format!("Command runner for {command} panic"))??;
 
     Ok(stdout)
 }
 
+async fn run_tailscale_command(args: &[&str]) -> Result<String> {
+    run_command("tailscale", args).await
+}
+
 /// Get the ip address of the current host in a specific version
 pub async fn get_host_ip_address(version: IpVersion) -> Result<IpAddr> {
-    let stdout = run_tailscale_command(&[
-        "--oneline",
-        version.ip_arg(),
-        "address",
-        "show",
-        "dev",
-        "eth0",
-        "scope",
-        "global",
-    ])
+    let stdout = run_command(
+        "ip",
+        &[
+            "--oneline",
+            version.ip_arg(),
+            "address",
+            "show",
+            "dev",
+            "eth0",
+            "scope",
+            "global",
+        ],
+    )
     .await?;
 
     let item = stdout
