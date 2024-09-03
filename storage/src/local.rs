@@ -137,12 +137,19 @@ impl Driver for LocalDriver {
             .context("create_dir_all")
             .map_err(|err| StorageError::new(self.name(), err))?;
 
+        tracing::trace!(%path, "Searching directory tree");
+
         let items = tokio::task::spawn_blocking(move || collect_list(&path))
             .in_current_span()
             .await
             .wrap_err("local driver")
             .map_err(|err| StorageError::new(self.name(), err))?
             .map_err(|err| StorageError::new(self.name(), err))?;
+
+        if items.is_empty() {
+            tracing::warn!("No remote (local) entries found");
+            return Ok(Vec::new());
+        }
 
         tracing::debug!("Found {} entries", items.len());
 
@@ -171,6 +178,7 @@ fn collect_list(path: &Utf8Path) -> eyre::Result<Vec<Utf8PathBuf>> {
 }
 
 fn visit(path: &Utf8Path, files: &mut Vec<Utf8PathBuf>) -> eyre::Result<()> {
+    tracing::trace!(%path, "Visiting {}", path);
     for entry in path.read_dir_utf8()? {
         let entry = entry?;
         if entry.file_type()?.is_dir() {

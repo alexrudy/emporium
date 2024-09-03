@@ -163,6 +163,8 @@ impl Driver for MemoryStorage {
         bucket: &str,
         prefix: Option<&Utf8Path>,
     ) -> Result<Vec<String>, StorageError> {
+        tracing::trace!(%bucket, ?prefix, "list memory bucket");
+
         let buckets = self.buckets.read().await;
         let bucket = buckets
             .get(bucket)
@@ -170,7 +172,7 @@ impl Driver for MemoryStorage {
             .map_err(|err| StorageError::new(self.name(), err))?;
 
         let mut paths = Vec::new();
-        for (path, _) in bucket.iter() {
+        for path in bucket.keys() {
             if let Some(prefix) = prefix {
                 if path.starts_with(prefix) {
                     paths.push(path.to_string());

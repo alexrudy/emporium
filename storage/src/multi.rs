@@ -28,12 +28,15 @@ pub struct MultiStorage {
 macro_rules! forward_driver {
     ($this:ident.$method:ident($url:expr)) => {
         async {
+            let _span = tracing::trace_span!("multi", method=%stringify!($method));
             if $url.scheme_str() == Some("file") {
+                tracing::trace!(method=%stringify!($method), "Using file driver");
                 return DriverUri::file().$method($url).await;
             }
             let driver = $this
                 .get($url)?
                 .ok_or_else(|| eyre!("Driver for {}:// not found", $url.scheme_str().unwrap_or_default())).map_err(|err| StorageError::new("multi driver", err))?;
+            tracing::trace!(method=%stringify!($method), driver=%driver.name(), "Using {} driver", driver.name());
 
             driver.uri().$method($url).await
         }
