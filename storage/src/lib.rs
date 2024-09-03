@@ -137,6 +137,11 @@ impl Storage {
         self.driver.name()
     }
 
+    /// The URI scheme for this driver
+    pub fn scheme(&self) -> &str {
+        self.driver.scheme()
+    }
+
     /// Get a bucket-specific storage client.
     pub fn bucket<S: Into<String>>(&self, bucket: S) -> StorageBucket {
         StorageBucket {
