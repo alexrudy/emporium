@@ -1,7 +1,7 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use eyre::Context;
 use tokio::io::AsyncWriteExt;
-use tracing::Instrument;
+use tracing::instrument;
 
 use storage_driver::{Driver, Metadata, Reader, StorageError, Writer};
 
@@ -121,6 +121,7 @@ impl Driver for LocalDriver {
         Ok(())
     }
 
+    #[instrument(skip(self), "local::list", level = "debug", fields(bucket=%bucket, prefix=%prefix.as_ref().map(|p| p.as_str()).unwrap_or("")))]
     async fn list(
         &self,
         bucket: &str,
@@ -139,15 +140,16 @@ impl Driver for LocalDriver {
 
         tracing::trace!(%path, "Searching directory tree");
 
-        let items = tokio::task::spawn_blocking(move || collect_list(&path))
-            .in_current_span()
+        let span = tracing::Span::current();
+
+        let items = tokio::task::spawn_blocking(move || span.in_scope(|| collect_list(&path)))
             .await
             .wrap_err("local driver")
             .map_err(|err| StorageError::new(self.name(), err))?
             .map_err(|err| StorageError::new(self.name(), err))?;
 
         if items.is_empty() {
-            tracing::warn!("No remote (local) entries found");
+            tracing::trace!("No remote entries found");
             return Ok(Vec::new());
         }
 
@@ -164,7 +166,6 @@ impl Driver for LocalDriver {
     }
 }
 
-#[tracing::instrument]
 fn collect_list(path: &Utf8Path) -> eyre::Result<Vec<Utf8PathBuf>> {
     let mut files = Vec::new();
 
@@ -173,7 +174,10 @@ fn collect_list(path: &Utf8Path) -> eyre::Result<Vec<Utf8PathBuf>> {
 
     Ok(files
         .into_iter()
-        .filter_map(|p| p.strip_prefix(path).ok().map(|p| p.to_owned()))
+        .filter_map(|p| {
+            tracing::trace!(path=%p, prefix=%path, "processing path");
+            p.strip_prefix(path).ok().map(|p| p.to_owned())
+        })
         .collect())
 }
 
@@ -184,6 +188,7 @@ fn visit(path: &Utf8Path, files: &mut Vec<Utf8PathBuf>) -> eyre::Result<()> {
         if entry.file_type()?.is_dir() {
             visit(entry.path(), files)?;
         } else {
+            tracing::trace!("Found file: {}", entry.path());
             files.push(entry.path().to_owned())
         }
     }
