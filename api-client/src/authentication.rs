@@ -202,13 +202,13 @@ impl<A, S> AuthenticationService<A, S> {
     }
 }
 
-impl<A, S, B> tower::Service<http::Request<B>> for AuthenticationService<A, S>
+impl<A, S, BIn, BOut> tower::Service<http::Request<BIn>> for AuthenticationService<A, S>
 where
     A: Authentication,
-    S: tower::Service<http::Request<B>, Response = http::Response<B>>,
+    S: tower::Service<http::Request<BIn>, Response = http::Response<BOut>>,
     S::Future: Send + 'static,
 {
-    type Response = http::Response<B>;
+    type Response = http::Response<BOut>;
     type Error = S::Error;
     type Future = S::Future;
 
@@ -219,7 +219,7 @@ where
         self.inner.poll_ready(cx)
     }
 
-    fn call(&mut self, req: http::Request<B>) -> Self::Future {
+    fn call(&mut self, req: http::Request<BIn>) -> Self::Future {
         let req = self.auth.load().authenticate(req);
         self.inner.call(req)
     }

@@ -10,6 +10,7 @@ use camino::Utf8Path;
 use dashmap::mapref::entry::Entry;
 use dashmap::DashMap;
 use eyre::Context;
+use hyperdriver::Body;
 use serde::Deserialize;
 
 use storage_driver::StorageError;
@@ -57,7 +58,7 @@ impl B2MultiConfig {
 /// usese Reqwest, and is shared among all clients.
 #[derive(Debug, Clone)]
 pub struct B2MultiClient {
-    client: hyperdriver::client::SharedClientService<hyperdriver::Body>,
+    client: hyperdriver::client::SharedClientService<Body, Body>,
     buckets: Arc<DashMap<Box<str>, B2BucketStatus>>,
 }
 

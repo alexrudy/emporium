@@ -2,7 +2,7 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 use camino::{Utf8Path, Utf8PathBuf};
@@ -41,6 +41,7 @@ pub struct Bookshelf {
     storage: Storage,
     bucket: String,
     prefix: Option<Utf8PathBuf>,
+    volumes: Arc<Mutex<Option<Vec<Volume>>>>,
 }
 
 impl Bookshelf {
@@ -50,6 +51,7 @@ impl Bookshelf {
             storage,
             bucket,
             prefix,
+            volumes: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -84,8 +86,17 @@ impl Bookshelf {
         self.prefix.as_deref()
     }
 
+    fn clear_volume_cache(&self) {
+        let mut volumes = self.volumes.lock().unwrap();
+        *volumes = None;
+    }
+
     /// List all volumes in the bookshelf.
     pub async fn list(&self) -> Result<Vec<Volume>, Error> {
+        if let Some(volumes) = self.volumes.lock().unwrap().as_ref() {
+            return Ok(volumes.clone());
+        }
+
         let mut list = self
             .storage
             .list(&self.bucket, self.prefix.as_deref())
@@ -95,6 +106,9 @@ impl Bookshelf {
             .collect::<Vec<_>>();
         list.sort();
         let shelves = self.process_list(list.as_slice())?;
+
+        let mut volumes = self.volumes.lock().unwrap();
+        *volumes = Some(shelves.clone());
 
         Ok(shelves)
     }
@@ -170,6 +184,7 @@ impl Bookshelf {
             .into_iter()
             .find(|s| s.name() == name)
             .unwrap_or_else(|| {
+                self.clear_volume_cache();
                 tracing::trace!("Creating new bookshelf: {}", name);
                 Volume::new(
                     self.storage.clone(),

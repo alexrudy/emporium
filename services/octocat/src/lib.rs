@@ -7,7 +7,7 @@ use api_client::{ApiClient, RequestExt, Secret};
 
 use http::HeaderValue;
 use hyperdriver::client::conn::transport::tcp::TcpTransportConfig;
-use hyperdriver::service::ServiceExt;
+use hyperdriver::service::ServiceExt as _;
 use jaws::claims::{Claims, RegisteredClaims};
 use jaws::crypto::{rsa, signature};
 use jaws::token::{Token, TokenFormattingError, TokenSigningError};
@@ -103,7 +103,7 @@ pub struct GithubClient {
 impl GithubClient {
     fn new(
         app: GithubApp,
-        client: hyperdriver::client::SharedClientService<Body>,
+        client: hyperdriver::client::SharedClientService<Body, Body>,
         installation: InstallationAccess,
         id: u64,
     ) -> Self {
@@ -175,16 +175,14 @@ pub struct GithubApp {
     app_id: String,
     secret: Arc<rsa::RsaPrivateKey>,
     token: Arc<RwLock<Option<TokenCache>>>,
-    client: hyperdriver::client::SharedClientService<Body>,
+    client: hyperdriver::client::SharedClientService<Body, Body>,
 }
 
 impl GithubApp {
     /// Create a new Github App client
     pub fn new(app_id: String, secret: Arc<rsa::RsaPrivateKey>) -> Self {
-        let tcp = TcpTransportConfig {
-            connect_timeout: Some(CONNECT_TIMEOUT),
-            ..Default::default()
-        };
+        let mut tcp = TcpTransportConfig::default();
+        tcp.connect_timeout = Some(CONNECT_TIMEOUT);
 
         let client = Client::builder()
             .layer(

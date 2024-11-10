@@ -27,6 +27,7 @@ hex = "0.4"
 http = "1"
 http-body = "1"
 http-body-util = "*"
+hyper = "1"
 jaws = { version = "1.0.0", features = ["rand", "spki", "der"] }
 indoc = "2"
 mime = "0.3"
@@ -51,8 +52,8 @@ yacme = { version = "5.0.0-rc.2" }
 zeroize = "1"
 
 [workspace.dependencies.hyperdriver]
-version = "0.5"
-features = ["stream", "tls", "server", "client", "discovery", "incoming", "sni"]
+version = "0.8"
+features = ["stream", "tls", "server", "client", "incoming", "sni"]
 
 [workspace.dependencies.tokio]
 version = "1"

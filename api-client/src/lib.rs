@@ -10,10 +10,12 @@ use arc_swap::Guard;
 use http::Method;
 use http::Uri;
 use hyperdriver::service::SharedService;
+use hyperdriver::Body;
 pub use secret::Secret;
 use tower::util::BoxCloneService;
 use tower::ServiceExt;
 
+mod adapt;
 mod authentication;
 pub mod error;
 mod paginate;
@@ -22,6 +24,7 @@ pub mod response;
 mod retry;
 pub mod uri;
 
+pub use self::adapt::AdaptClientIncomingLayer;
 pub use self::authentication::{
     basic_auth, Authentication, AuthenticationLayer, AuthenticationService, BasicAuth, BearerAuth,
 };
@@ -34,11 +37,8 @@ pub use self::retry::{Attempts, Backoff};
 use self::uri::UriExtension as _;
 
 /// A boxed service used for API requests in the Client
-pub type ApiService = BoxCloneService<
-    hyperdriver::body::Request,
-    hyperdriver::body::Response,
-    hyperdriver::client::Error,
->;
+pub type ApiService =
+    BoxCloneService<http::Request<Body>, http::Response<Body>, hyperdriver::client::Error>;
 
 /// A boxed future used for API requests in the Client
 pub type BoxFuture<'a, T> = std::pin::Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -46,7 +46,7 @@ pub type BoxFuture<'a, T> = std::pin::Pin<Box<dyn Future<Output = T> + Send + 'a
 #[derive(Debug)]
 struct InnerClient<A> {
     base: ArcSwap<Uri>,
-    inner: hyperdriver::client::SharedClientService<hyperdriver::Body>,
+    inner: hyperdriver::client::SharedClientService<Body, Body>,
     authentication: Arc<ArcSwap<A>>,
 }
 
@@ -73,7 +73,7 @@ where
         ApiClient {
             inner: Arc::new(InnerClient {
                 base: ArcSwap::new(Arc::new(base)),
-                inner,
+                inner: SharedService::new(inner),
                 authentication,
             }),
         }
@@ -84,8 +84,8 @@ where
     pub fn new_with_inner_service<S>(base: Uri, authentication: A, inner: S) -> Self
     where
         S: tower::Service<
-                hyperdriver::body::Request,
-                Response = hyperdriver::body::Response,
+                http::Request<Body>,
+                Response = http::Response<Body>,
                 Error = hyperdriver::client::Error,
             > + Clone
             + Send
@@ -125,7 +125,7 @@ where
     }
 
     /// Get the inner service used to make HTTP requests
-    pub fn inner(&self) -> &hyperdriver::client::SharedClientService<hyperdriver::Body> {
+    pub fn inner(&self) -> &hyperdriver::client::SharedClientService<Body, Body> {
         &self.inner.inner
     }
 }
@@ -170,7 +170,7 @@ where
     }
 
     /// Execute a request and return the response
-    pub async fn execute(&self, req: hyperdriver::body::Request) -> Result<Response, Error> {
+    pub async fn execute(&self, req: http::Request<Body>) -> Result<Response, Error> {
         let parts = req.parts();
 
         let response = self
@@ -188,6 +188,7 @@ where
 pub mod mock {
     use bytes::Bytes;
     use http::response;
+    use hyperdriver::Body;
     use std::collections::HashMap;
 
     /// A mock response for testing API clients
@@ -237,8 +238,8 @@ pub mod mock {
         }
     }
 
-    impl tower::Service<hyperdriver::body::Request> for MockService {
-        type Response = hyperdriver::body::Response;
+    impl tower::Service<http::Request<Body>> for MockService {
+        type Response = http::Response<Body>;
         type Error = hyperdriver::client::Error;
         type Future = std::future::Ready<Result<Self::Response, Self::Error>>;
 
@@ -249,7 +250,7 @@ pub mod mock {
             std::task::Poll::Ready(Ok(()))
         }
 
-        fn call(&mut self, req: hyperdriver::body::Request) -> Self::Future {
+        fn call(&mut self, req: http::Request<Body>) -> Self::Future {
             let path = req.uri().path().to_owned();
             let response = self.responses.get(&path).unwrap_or_else(|| {
                 panic!(

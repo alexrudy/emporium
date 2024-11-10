@@ -37,7 +37,6 @@ pub trait Paginator: PaginationInfo {
     type Item;
 
     /// Get all items from the paginator in this page
-
     fn items(&mut self) -> Vec<Self::Item>;
 }
 

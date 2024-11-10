@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use http::Uri;
 use http::{header::HeaderValue, HeaderName};
+use hyperdriver::Body;
 use serde::Serialize;
 use tower::ServiceExt as _;
 
@@ -110,8 +111,8 @@ impl RequestExt for http::request::Builder {
 #[derive(Debug)]
 pub struct RequestBuilder {
     req: http::request::Builder,
-    client: hyperdriver::client::SharedClientService<hyperdriver::Body>,
-    body: Option<hyperdriver::Body>,
+    client: hyperdriver::client::SharedClientService<Body, Body>,
+    body: Option<Body>,
     timeout: Option<Duration>,
 }
 
@@ -173,7 +174,7 @@ impl RequestBuilder {
     }
 
     /// Set the body of the request
-    pub fn body<B: Into<hyperdriver::Body>>(self, body: B) -> Self {
+    pub fn body<B: Into<Body>>(self, body: B) -> Self {
         Self {
             body: Some(body.into()),
             ..self
@@ -187,7 +188,7 @@ impl RequestBuilder {
         );
 
         Ok(Self {
-            body: Some(hyperdriver::Body::from(body)),
+            body: Some(Body::from(body)),
             req: self
                 .req
                 .header(http::header::CONTENT_TYPE, "application/json"),
@@ -199,7 +200,7 @@ impl RequestBuilder {
     pub async fn send(self) -> Result<Response, hyperdriver::client::Error> {
         let req = self
             .req
-            .body(self.body.unwrap_or_else(hyperdriver::Body::empty))
+            .body(self.body.unwrap_or_else(Body::empty))
             .expect("valid request");
 
         let parts = req.parts();
@@ -218,8 +219,7 @@ impl RequestBuilder {
     }
 
     /// Build the request
-    pub fn build(self) -> Result<http::Request<hyperdriver::Body>, http::Error> {
-        self.req
-            .body(self.body.unwrap_or_else(hyperdriver::Body::empty))
+    pub fn build(self) -> Result<http::Request<Body>, http::Error> {
+        self.req.body(self.body.unwrap_or_else(Body::empty))
     }
 }

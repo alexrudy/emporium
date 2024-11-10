@@ -11,44 +11,64 @@ mod futures {
 
     use http_body_util::combinators::Collect;
     use http_body_util::BodyExt as _;
-    use hyperdriver::Body;
     use pin_project::pin_project;
     use tower::BoxError;
 
     #[pin_project]
-    pub struct Bytes(#[pin] Collect<Body>);
+    pub struct Bytes<Body = hyperdriver::Body>(#[pin] Collect<Body>)
+    where
+        Body: http_body::Body;
 
-    impl fmt::Debug for Bytes {
+    impl<Body> fmt::Debug for Bytes<Body>
+    where
+        Body: http_body::Body,
+    {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             f.debug_struct("Bytes").finish()
         }
     }
 
-    impl Future for Bytes {
+    impl<Body> Future for Bytes<Body>
+    where
+        Body: http_body::Body,
+        Body::Error: Into<BoxError>,
+    {
         type Output = Result<bytes::Bytes, BoxError>;
 
         fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-            let collected = ready!(self.project().0.poll(cx))?;
+            let collected = ready!(self.project().0.poll(cx)).map_err(Into::into)?;
             Poll::Ready(Ok(collected.to_bytes()))
         }
     }
 
-    impl From<Body> for Bytes {
+    impl<Body> From<Body> for Bytes<Body>
+    where
+        Body: http_body::Body,
+    {
         fn from(body: Body) -> Self {
             Self(body.collect())
         }
     }
 
     #[pin_project]
-    pub struct Text(#[pin] Bytes);
+    pub struct Text<Body = hyperdriver::Body>(#[pin] Bytes<Body>)
+    where
+        Body: http_body::Body;
 
-    impl fmt::Debug for Text {
+    impl<Body> fmt::Debug for Text<Body>
+    where
+        Body: http_body::Body,
+    {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             f.debug_struct("Text").finish()
         }
     }
 
-    impl Future for Text {
+    impl<Body> Future for Text<Body>
+    where
+        Body: http_body::Body,
+        Body::Error: Into<BoxError>,
+    {
         type Output = Result<String, BoxError>;
 
         fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -57,34 +77,48 @@ mod futures {
         }
     }
 
-    impl From<Bytes> for Text {
-        fn from(bytes: Bytes) -> Self {
+    impl<Body> From<Bytes<Body>> for Text<Body>
+    where
+        Body: http_body::Body,
+    {
+        fn from(bytes: Bytes<Body>) -> Self {
             Self(bytes)
         }
     }
 
-    impl From<Body> for Text {
+    impl<Body> From<Body> for Text<Body>
+    where
+        Body: http_body::Body,
+    {
         fn from(body: Body) -> Self {
             Self(Bytes::from(body))
         }
     }
 
     #[pin_project]
-    pub struct Json<T> {
+    pub struct Json<T, Body = hyperdriver::Body>
+    where
+        Body: http_body::Body,
+    {
         #[pin]
-        inner: Bytes,
+        inner: Bytes<Body>,
         _phantom: std::marker::PhantomData<T>,
     }
 
-    impl<T> fmt::Debug for Json<T> {
+    impl<T, B> fmt::Debug for Json<T, B>
+    where
+        B: http_body::Body,
+    {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             f.debug_struct("Json").finish()
         }
     }
 
-    impl<T> Future for Json<T>
+    impl<T, B> Future for Json<T, B>
     where
         T: serde::de::DeserializeOwned,
+        B: http_body::Body,
+        B::Error: Into<BoxError>,
     {
         type Output = Result<T, BoxError>;
 
@@ -94,7 +128,10 @@ mod futures {
         }
     }
 
-    impl<T> From<Body> for Json<T> {
+    impl<T, Body> From<Body> for Json<T, Body>
+    where
+        Body: http_body::Body,
+    {
         fn from(body: Body) -> Self {
             Self {
                 inner: Bytes::from(body),
@@ -103,8 +140,11 @@ mod futures {
         }
     }
 
-    impl<T> From<Bytes> for Json<T> {
-        fn from(bytes: Bytes) -> Self {
+    impl<T, Body> From<Bytes<Body>> for Json<T, Body>
+    where
+        Body: http_body::Body,
+    {
+        fn from(bytes: Bytes<Body>) -> Self {
             Self {
                 inner: bytes,
                 _phantom: std::marker::PhantomData,
@@ -114,15 +154,18 @@ mod futures {
 }
 
 /// Extension trait for working with HTTP response bodies.
-pub trait ResponseBodyExt {
+pub trait ResponseBodyExt<Body>
+where
+    Body: http_body::Body,
+{
     /// Get a reference to the response body.
     fn body(&self) -> &Body;
 
     /// Collect the response body into a `Bytes` instance.
-    fn bytes(self) -> self::futures::Bytes;
+    fn bytes(self) -> self::futures::Bytes<Body>;
 
     /// Collect the response body into a `String` instance.
-    fn text(self) -> self::futures::Text
+    fn text(self) -> self::futures::Text<Body>
     where
         Self: Sized,
     {
@@ -130,7 +173,7 @@ pub trait ResponseBodyExt {
     }
 
     /// Collect the body and deserialize it as JSON.
-    fn json<T>(self) -> self::futures::Json<T>
+    fn json<T>(self) -> self::futures::Json<T, Body>
     where
         T: serde::de::DeserializeOwned,
         Self: Sized,
@@ -140,7 +183,10 @@ pub trait ResponseBodyExt {
 }
 
 /// Extension trait for working with HTTP response types.
-pub trait ResponseExt: ResponseBodyExt {
+pub trait ResponseExt<Body>: ResponseBodyExt<Body>
+where
+    Body: http_body::Body,
+{
     /// Get the status code of the response.
     fn status(&self) -> http::StatusCode;
 
@@ -157,16 +203,19 @@ pub trait ResponseExt: ResponseBodyExt {
     fn response(&self) -> &http::response::Parts;
 }
 
-impl ResponseBodyExt for http::Response<Body> {
+impl<Body> ResponseBodyExt<Body> for http::Response<Body>
+where
+    Body: http_body::Body,
+{
     fn body(&self) -> &Body {
         self.body()
     }
 
-    fn bytes(self) -> self::futures::Bytes {
+    fn bytes(self) -> self::futures::Bytes<Body> {
         self.into_body().into()
     }
 
-    fn text(self) -> self::futures::Text {
+    fn text(self) -> self::futures::Text<Body> {
         self.into_body().into()
     }
 }
@@ -217,7 +266,7 @@ impl Response {
     }
 }
 
-impl ResponseBodyExt for Response {
+impl ResponseBodyExt<hyperdriver::Body> for Response {
     fn body(&self) -> &Body {
         &self.body
     }
@@ -231,7 +280,7 @@ impl ResponseBodyExt for Response {
     }
 }
 
-impl ResponseExt for Response {
+impl ResponseExt<hyperdriver::Body> for Response {
     fn status(&self) -> http::StatusCode {
         self.response.status
     }

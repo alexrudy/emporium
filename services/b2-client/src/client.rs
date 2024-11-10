@@ -64,7 +64,7 @@ impl B2Client {
     }
 
     pub(crate) fn from_client_and_authorization(
-        client: hyperdriver::client::SharedClientService<Body>,
+        client: hyperdriver::client::SharedClientService<Body, Body>,
         authorization: B2Authorization,
         keys: B2ApplicationKey,
     ) -> Self {

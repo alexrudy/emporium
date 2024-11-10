@@ -1,5 +1,5 @@
 use http::StatusCode;
-use hyperdriver::body::TryCloneRequest;
+use hyperdriver::Body;
 use tower::retry::Policy;
 
 /// A policy for retrying requests with exponential backoff
@@ -51,13 +51,13 @@ impl Backoff {
     }
 }
 
-impl<E> Policy<hyperdriver::body::Request, hyperdriver::body::Response, E> for Backoff {
+impl<E> Policy<http::Request<Body>, http::Response<Body>, E> for Backoff {
     type Future = BackoffFuture;
 
     fn retry(
         &self,
-        req: &hyperdriver::body::Request,
-        result: Result<&hyperdriver::body::Response, &E>,
+        req: &http::Request<Body>,
+        result: Result<&http::Response<Body>, &E>,
     ) -> Option<Self::Future> {
         let backoff = self.increment()?;
         match result {
@@ -95,12 +95,25 @@ impl<E> Policy<hyperdriver::body::Request, hyperdriver::body::Response, E> for B
         }
     }
 
-    fn clone_request(
-        &self,
-        req: &hyperdriver::body::Request,
-    ) -> Option<hyperdriver::body::Request> {
-        req.try_clone_request()
+    fn clone_request(&self, req: &http::Request<Body>) -> Option<http::Request<Body>> {
+        try_clone_request(req)
     }
+}
+
+fn try_clone_request(req: &http::Request<Body>) -> Option<http::Request<Body>> {
+    let body = req.body().try_clone()?;
+
+    let mut next = http::Request::builder()
+        .method(req.method().clone())
+        .uri(req.uri().clone())
+        .version(req.version())
+        .body(body)
+        .unwrap();
+
+    *next.extensions_mut() = req.extensions().clone();
+    *next.headers_mut() = req.headers().clone();
+
+    Some(next)
 }
 
 #[derive(Debug)]
@@ -155,13 +168,13 @@ impl From<usize> for Attempts {
     }
 }
 
-impl<E> Policy<hyperdriver::body::Request, hyperdriver::body::Response, E> for Attempts {
+impl<E> Policy<http::Request<Body>, http::Response<Body>, E> for Attempts {
     type Future = std::future::Ready<Self>;
 
     fn retry(
         &self,
-        req: &hyperdriver::body::Request,
-        result: Result<&hyperdriver::body::Response, &E>,
+        req: &http::Request<Body>,
+        result: Result<&http::Response<Body>, &E>,
     ) -> Option<Self::Future> {
         match result {
             Ok(res) => {
@@ -183,10 +196,7 @@ impl<E> Policy<hyperdriver::body::Request, hyperdriver::body::Response, E> for A
         }
     }
 
-    fn clone_request(
-        &self,
-        req: &hyperdriver::body::Request,
-    ) -> Option<hyperdriver::body::Request> {
-        req.try_clone_request()
+    fn clone_request(&self, req: &http::Request<Body>) -> Option<http::Request<Body>> {
+        try_clone_request(req)
     }
 }

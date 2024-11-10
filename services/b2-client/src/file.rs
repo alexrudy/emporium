@@ -220,6 +220,7 @@ mod mime {
         {
             struct Visitor;
 
+            #[allow(clippy::needless_lifetimes)]
             impl<'de> de::Visitor<'de> for Visitor {
                 type Value = BzMime;
 
