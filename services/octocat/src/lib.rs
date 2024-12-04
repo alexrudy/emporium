@@ -55,6 +55,10 @@ pub enum Error {
     /// An error that occurs when receiving a response body.
     #[error("Receiving body: {0}")]
     Body(#[source] Box<dyn std::error::Error + Send + Sync>),
+
+    /// An error occured when interacting with the filesystem.
+    #[error("IO: {0}")]
+    IO(#[from] std::io::Error),
 }
 
 impl From<TokenSigningError> for Error {
@@ -141,6 +145,33 @@ impl GithubClient {
     /// Get the authentication token.
     pub fn token(&self) -> Secret {
         self.client.auth().token.clone()
+    }
+
+    /// Set up git credentials for this installation with a token.
+    pub async fn install_credentials(&self) -> Result<(), Error> {
+        let path = format!("/etc/octocat/credentials/{}", self.id);
+        let contents = format!(
+            "https://x-access-token:{}@github.com\n",
+            self.token().revealed()
+        );
+
+        tokio::fs::write(&path, contents).await?;
+
+        tokio::process::Command::new("chmod")
+            .arg("600")
+            .arg(&path)
+            .output()
+            .await?;
+
+        tokio::process::Command::new("git")
+            .arg("config")
+            .arg("--global")
+            .arg("credential.helper")
+            .arg(format!("store --file {}", path))
+            .output()
+            .await?;
+
+        Ok(())
     }
 
     /// refresh the authentication token.

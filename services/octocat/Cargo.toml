@@ -17,6 +17,7 @@ storage.path = "../../storage"
 thiserror.workspace = true
 tower-http.workspace = true
 tracing.workspace = true
+tokio.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }
