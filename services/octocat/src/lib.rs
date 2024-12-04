@@ -1,5 +1,9 @@
 //! Simple client for using oAuth applications with the Github API.
 
+use std::ffi::OsString;
+use std::fmt;
+use std::path::PathBuf;
+use std::process::Output;
 use std::sync::{Arc, RwLock};
 
 use api_client::response::ResponseBodyExt;
@@ -59,6 +63,10 @@ pub enum Error {
     /// An error occured when interacting with the filesystem.
     #[error("IO: {0}")]
     IO(#[from] std::io::Error),
+
+    /// An error occured when encoding or decoding data from the OS
+    #[error("Encoding: {0}")]
+    OsEncoding(#[from] std::string::FromUtf8Error),
 }
 
 impl From<TokenSigningError> for Error {
@@ -92,6 +100,133 @@ impl ResponseError {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
         Self { status, body }
+    }
+}
+
+#[derive(Clone)]
+struct GithubCredentialHelperSettings {
+    credentials: PathBuf,
+    existing_global_setting: Option<String>,
+}
+
+/// A guard struct to restore git credentials when dropped.
+pub struct GithubCredentialsHelper {
+    settings: GithubCredentialHelperSettings,
+    tx: Option<tokio::sync::oneshot::Sender<()>>,
+}
+
+async fn run(command: &mut tokio::process::Command) -> Result<Output, std::io::Error> {
+    let output = command.output().await?;
+    if !output.status.success() {
+        tracing::error!("Git command failed: {:?}", output);
+    }
+
+    Ok(output)
+}
+
+impl GithubCredentialsHelper {
+    /// Set the current credenetials to be used by git.
+    pub async fn new(path: impl Into<PathBuf>, credential: &Secret) -> Result<Self, Error> {
+        let path = path.into();
+        let contents = format!(
+            "https://x-access-token:{}@github.com\n",
+            credential.revealed()
+        );
+
+        tokio::fs::write(&path, contents).await?;
+        run(tokio::process::Command::new("chmod").arg("600").arg(&path)).await?;
+
+        let output = tokio::process::Command::new("git")
+            .args(["config", "get", "--global", "credential.helper"])
+            .output()
+            .await?;
+
+        let credential_helper = if output.status.success() {
+            Some(String::from_utf8(output.stdout)?.trim().to_owned())
+        } else {
+            None
+        };
+
+        let mut setting = OsString::from("store --file ".to_string());
+        setting.push(&path);
+
+        run(tokio::process::Command::new("git")
+            .args(["config", "--global", "credential.helper"])
+            .arg(setting))
+        .await?;
+
+        let (tx, rx) = tokio::sync::oneshot::channel();
+
+        let settings = GithubCredentialHelperSettings {
+            credentials: path,
+            existing_global_setting: credential_helper,
+        };
+
+        let guard = GithubCredentialsHelper {
+            settings: settings.clone(),
+            tx: Some(tx),
+        };
+
+        tokio::task::spawn(async move {
+            if rx.await.is_err() {
+                tracing::error!("No signal to restore git credentials, connection dropped");
+            }
+
+            if let Err(error) = tokio::fs::remove_file(&settings.credentials).await {
+                tracing::error!("Failed to remove github app git credentials: {}", error);
+            }
+
+            let output = if let Some(existing) = &settings.existing_global_setting {
+                tokio::process::Command::new("git")
+                    .args(["config", "--global", "credential.helper"])
+                    .arg(existing)
+                    .output()
+                    .await
+            } else {
+                tokio::process::Command::new("git")
+                    .args(["config", "--global", "--unset", "credential.helper"])
+                    .output()
+                    .await
+            };
+
+            match output {
+                Err(error) => {
+                    tracing::error!(?settings.existing_global_setting, "Failed to restore git credentials config: {}", error)
+                }
+                Ok(output) if !output.status.success() => {
+                    tracing::error!(?settings.existing_global_setting, "Failed to restore git credentials config: {:?}", output)
+                }
+                _ => {}
+            }
+        });
+
+        Ok(guard)
+    }
+}
+
+impl fmt::Debug for GithubCredentialsHelper {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("GithubCredentialsHelper")
+            .field("credentials", &self.settings.credentials)
+            .field(
+                "existing_global_setting",
+                &self.settings.existing_global_setting,
+            )
+            .finish()
+    }
+}
+
+impl Drop for GithubCredentialsHelper {
+    fn drop(&mut self) {
+        if self
+            .tx
+            .take()
+            .expect("drop called twice?")
+            .send(())
+            .is_err()
+        {
+            tracing::error!("Failed to send signal to restore git credentials");
+        }
     }
 }
 
@@ -148,30 +283,9 @@ impl GithubClient {
     }
 
     /// Set up git credentials for this installation with a token.
-    pub async fn install_credentials(&self) -> Result<(), Error> {
+    pub async fn install_credentials(&self) -> Result<GithubCredentialsHelper, Error> {
         let path = format!("/etc/octocat/credentials/{}", self.id);
-        let contents = format!(
-            "https://x-access-token:{}@github.com\n",
-            self.token().revealed()
-        );
-
-        tokio::fs::write(&path, contents).await?;
-
-        tokio::process::Command::new("chmod")
-            .arg("600")
-            .arg(&path)
-            .output()
-            .await?;
-
-        tokio::process::Command::new("git")
-            .arg("config")
-            .arg("--global")
-            .arg("credential.helper")
-            .arg(format!("store --file {}", path))
-            .output()
-            .await?;
-
-        Ok(())
+        GithubCredentialsHelper::new(path, &self.token()).await
     }
 
     /// refresh the authentication token.
