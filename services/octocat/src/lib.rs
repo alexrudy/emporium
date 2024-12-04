@@ -18,7 +18,7 @@ use models::InstallationAccess;
 use rsa::sha2::Sha256;
 use thiserror::Error;
 
-mod config;
+pub mod config;
 pub mod models;
 
 pub use crate::config::GithubAppConfig;
