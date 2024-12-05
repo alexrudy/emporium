@@ -55,9 +55,9 @@ impl<E> Policy<http::Request<Body>, http::Response<Body>, E> for Backoff {
     type Future = BackoffFuture;
 
     fn retry(
-        &self,
-        req: &http::Request<Body>,
-        result: Result<&http::Response<Body>, &E>,
+        &mut self,
+        req: &mut http::Request<Body>,
+        result: &mut Result<http::Response<Body>, E>,
     ) -> Option<Self::Future> {
         let backoff = self.increment()?;
         match result {
@@ -95,7 +95,7 @@ impl<E> Policy<http::Request<Body>, http::Response<Body>, E> for Backoff {
         }
     }
 
-    fn clone_request(&self, req: &http::Request<Body>) -> Option<http::Request<Body>> {
+    fn clone_request(&mut self, req: &http::Request<Body>) -> Option<http::Request<Body>> {
         try_clone_request(req)
     }
 }
@@ -119,7 +119,6 @@ fn try_clone_request(req: &http::Request<Body>) -> Option<http::Request<Body>> {
 #[derive(Debug)]
 #[pin_project::pin_project]
 pub struct BackoffFuture {
-    backoff: Backoff,
     #[pin]
     sleep: tokio::time::Sleep,
 }
@@ -128,20 +127,19 @@ impl BackoffFuture {
     pub fn new(backoff: Backoff) -> Self {
         Self {
             sleep: tokio::time::sleep(backoff.delay),
-            backoff,
         }
     }
 }
 
 impl std::future::Future for BackoffFuture {
-    type Output = Backoff;
+    type Output = ();
 
     fn poll(
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Self::Output> {
         let this = self.project();
-        this.sleep.poll(cx).map(|_| this.backoff.clone())
+        this.sleep.poll(cx)
     }
 }
 
@@ -169,18 +167,19 @@ impl From<usize> for Attempts {
 }
 
 impl<E> Policy<http::Request<Body>, http::Response<Body>, E> for Attempts {
-    type Future = std::future::Ready<Self>;
+    type Future = std::future::Ready<()>;
 
     fn retry(
-        &self,
-        req: &http::Request<Body>,
-        result: Result<&http::Response<Body>, &E>,
+        &mut self,
+        req: &mut http::Request<Body>,
+        result: &mut Result<http::Response<Body>, E>,
     ) -> Option<Self::Future> {
         match result {
             Ok(res) => {
                 if res.status().is_server_error() && self.0 > 0 {
                     tracing::debug!("retrying request to {} due to server error", req.uri());
-                    Some(std::future::ready(Self(self.0 - 1)))
+                    self.0 -= 1;
+                    Some(std::future::ready(()))
                 } else {
                     None
                 }
@@ -188,7 +187,8 @@ impl<E> Policy<http::Request<Body>, http::Response<Body>, E> for Attempts {
             Err(_) => {
                 if self.0 > 0 {
                     tracing::debug!("retrying request to {} due to error", req.uri());
-                    Some(std::future::ready(Self(self.0 - 1)))
+                    self.0 -= 1;
+                    Some(std::future::ready(()))
                 } else {
                     None
                 }
@@ -196,7 +196,7 @@ impl<E> Policy<http::Request<Body>, http::Response<Body>, E> for Attempts {
         }
     }
 
-    fn clone_request(&self, req: &http::Request<Body>) -> Option<http::Request<Body>> {
+    fn clone_request(&mut self, req: &http::Request<Body>) -> Option<http::Request<Body>> {
         try_clone_request(req)
     }
 }
