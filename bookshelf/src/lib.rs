@@ -93,8 +93,10 @@ impl Bookshelf {
 
     /// List all volumes in the bookshelf.
     pub async fn list(&self) -> Result<Vec<Volume>, Error> {
-        if let Some(volumes) = self.volumes.lock().unwrap().as_ref() {
-            return Ok(volumes.clone());
+        {
+            if let Some(volumes) = self.volumes.lock().unwrap().as_ref() {
+                return Ok(volumes.clone());
+            }
         }
 
         let mut list = self
@@ -107,8 +109,10 @@ impl Bookshelf {
         list.sort();
         let shelves = self.process_list(list.as_slice())?;
 
-        let mut volumes = self.volumes.lock().unwrap();
-        *volumes = Some(shelves.clone());
+        {
+            let mut volumes = self.volumes.lock().unwrap();
+            *volumes = Some(shelves.clone());
+        }
 
         Ok(shelves)
     }
@@ -382,7 +386,7 @@ impl Book {
         self.volume
             .paths()
             .get(&self.epoch)
-            .map_or(false, |paths| paths.iter().any(|p| p == path.as_ref()))
+            .is_some_and(|paths| paths.iter().any(|p| p == path.as_ref()))
     }
 
     /// Get an entry in the book, with download and upload methods.
@@ -448,7 +452,7 @@ impl Entry {
         self.volume
             .paths()
             .get(&self.epoch)
-            .map_or(false, |paths| paths.iter().any(|p| self.path.ends_with(p)))
+            .is_some_and(|paths| paths.iter().any(|p| self.path.ends_with(p)))
     }
 
     /// Download the artifact to a writer.
