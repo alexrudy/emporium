@@ -160,6 +160,12 @@ impl RequestBuilder {
         self.req.headers_mut()
     }
 
+    /// Set the HTTP version of the request
+    pub fn version(mut self, version: http::Version) -> Self {
+        self.req = self.req.version(version);
+        self
+    }
+
     /// Add query parameters to the request
     pub fn query<T: Serialize + ?Sized>(mut self, query: &T) -> Result<Self, Error> {
         let uri = self.req.uri_ref().expect("missing uri").clone();

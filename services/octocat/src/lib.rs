@@ -264,12 +264,12 @@ impl GithubClient {
 
     /// Build a GET request against a Github endpoint.
     pub fn get(&self, endpoint: &str) -> api_client::RequestBuilder {
-        self.client.get(endpoint)
+        self.client.get(endpoint).version(http::Version::HTTP_2)
     }
 
     /// Build a POST request against a Github endpoint.
     pub fn post(&self, endpoint: &str) -> api_client::RequestBuilder {
-        self.client.post(endpoint)
+        self.client.post(endpoint).version(http::Version::HTTP_2)
     }
 
     /// Check if the authentication token is expired.
@@ -343,6 +343,7 @@ impl GithubApp {
                 ),
             )
             .with_tcp(tcp)
+            .with_default_tls()
             .with_auto_http()
             .with_user_agent("automoton-octocat/0.1.0".to_owned())
             .with_timeout(TIMEOUT)
@@ -359,6 +360,7 @@ impl GithubApp {
     /// List all installations for this app
     pub async fn installations(&self) -> Result<Vec<crate::models::Installation>, Error> {
         let req = http::Request::get(GITHUB_LIST_INSTALLATIONS)
+            .version(http::Version::HTTP_2)
             .bearer_auth(self.authentication_token(None)?.revealed())
             .body(Body::empty())
             .unwrap();
@@ -385,6 +387,7 @@ impl GithubApp {
         let req = http::Request::post(format!(
             "https://api.github.com/app/installations/{installation_id}/access_tokens"
         ))
+        .version(http::Version::HTTP_2)
         .bearer_auth(self.authentication_token(None)?.revealed())
         .body(Body::empty())
         .unwrap();
@@ -419,6 +422,7 @@ impl GithubApp {
             user = user,
             repository = repository
         ))
+        .version(http::Version::HTTP_2)
         .bearer_auth(self.authentication_token(None)?.revealed())
         .body(Body::empty())
         .unwrap();

@@ -190,6 +190,7 @@ impl B2Authorization {
 
         let mut req = Request::builder()
             .method(Method::GET)
+            .version(http::Version::HTTP_11)
             .uri(url)
             .body(Body::empty())
             .unwrap();
@@ -204,6 +205,7 @@ impl B2Authorization {
 
         let mut req = Request::builder()
             .method(Method::POST)
+            .version(http::Version::HTTP_11)
             .uri(url)
             .body(
                 serde_json::to_string(body)
@@ -274,6 +276,7 @@ impl B2ApplicationKey {
 
         let request = http::Request::builder()
             .method(Method::GET)
+            .version(http::Version::HTTP_11)
             .uri(B2_APPLICATION_URL)
             .basic_auth(self.key_id.revealed(), Some(self.key.revealed()))
             .body(Body::empty())
