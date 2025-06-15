@@ -52,7 +52,7 @@ yacme = { version = "5.0.0-rc.2" }
 zeroize = "1"
 
 [workspace.dependencies.hyperdriver]
-version = "0.8"
+version = "0.9"
 features = ["stream", "tls", "server", "client", "incoming", "sni"]
 
 [workspace.dependencies.tokio]
