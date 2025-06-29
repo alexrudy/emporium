@@ -61,7 +61,7 @@ jobs:
         run: ${{ matrix.steps.run }}
 
   msrv:
-    name: MSRV 1.74
+    name: MSRV 1.85
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
@@ -69,7 +69,7 @@ jobs:
       - name: Install rust toolchain
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.74.0
+          toolchain: 1.85.0
       - name: Run cargo build
         run: cargo check --all-targets --all-features
 
