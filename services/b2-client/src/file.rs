@@ -176,8 +176,8 @@ mod mime {
             match self {
                 BzMime::Auto => write!(f, "b2/x-auto"),
                 BzMime::Hide => write!(f, "application/x-bz-hide-marker"),
-                BzMime::Mime(mime) => write!(f, "{}", mime),
-                BzMime::Custom(s) => write!(f, "{}", s),
+                BzMime::Mime(mime) => write!(f, "{mime}"),
+                BzMime::Custom(s) => write!(f, "{s}"),
             }
         }
     }

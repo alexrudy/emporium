@@ -136,9 +136,8 @@ impl B2Client {
             .context("open download stream")
             .map_err(StorageError::with(B2_STORAGE_NAME))?;
 
-        let mut src = tokio_util::io::StreamReader::new(
-            stream.map(|s| s.map_err(|err| io::Error::new(io::ErrorKind::Other, err))),
-        );
+        let mut src =
+            tokio_util::io::StreamReader::new(stream.map(|s| s.map_err(io::Error::other)));
         tokio::io::copy(&mut src, local)
             .await
             .context("copy file to upload stream")

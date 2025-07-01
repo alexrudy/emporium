@@ -137,8 +137,8 @@ impl fmt::Display for EpochSelector {
         match self {
             Self::Earliest => write!(f, "earliest"),
             Self::Latest => write!(f, "latest"),
-            Self::Exact(epoch) => write!(f, "{}", epoch),
-            Self::Nth(n) => write!(f, "{}th", n),
+            Self::Exact(epoch) => write!(f, "{epoch}"),
+            Self::Nth(n) => write!(f, "{n}th"),
         }
     }
 }
@@ -196,41 +196,16 @@ mod test {
         }
 
         let selector = EpochSelector::Earliest;
-        assert_eq!(
-            selector.find(&epochs),
-            Some(epoch_items[0]),
-            "{:?}",
-            selector
-        );
+        assert_eq!(selector.find(&epochs), Some(epoch_items[0]), "{selector:?}");
 
         let selector = EpochSelector::Latest;
-        assert_eq!(
-            selector.find(&epochs),
-            Some(epoch_items[2]),
-            "{:?}",
-            selector
-        );
+        assert_eq!(selector.find(&epochs), Some(epoch_items[2]), "{selector:?}");
         let selector = EpochSelector::Exact(epoch_items[1]);
-        assert_eq!(
-            selector.find(&epochs),
-            Some(epoch_items[1]),
-            "{:?}",
-            selector
-        );
+        assert_eq!(selector.find(&epochs), Some(epoch_items[1]), "{selector:?}");
         let selector = EpochSelector::Nth(1);
-        assert_eq!(
-            selector.find(&epochs),
-            Some(epoch_items[1]),
-            "{:?}",
-            selector
-        );
+        assert_eq!(selector.find(&epochs), Some(epoch_items[1]), "{selector:?}");
 
         let selector = EpochSelector::Nth(2);
-        assert_eq!(
-            selector.find(&epochs),
-            Some(epoch_items[0]),
-            "{:?}",
-            selector
-        );
+        assert_eq!(selector.find(&epochs), Some(epoch_items[0]), "{selector:?}");
     }
 }

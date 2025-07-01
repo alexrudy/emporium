@@ -51,7 +51,7 @@ impl<B> RequestExt for http::Request<B> {
     where
         T: std::fmt::Display,
     {
-        let mut value = HeaderValue::from_str(&format!("Bearer {}", token)).unwrap();
+        let mut value = HeaderValue::from_str(&format!("Bearer {token}")).unwrap();
         value.set_sensitive(true);
 
         self.headers_mut()
@@ -87,7 +87,7 @@ impl RequestExt for http::request::Builder {
     where
         T: std::fmt::Display,
     {
-        let mut value = HeaderValue::from_str(&format!("Bearer {}", token)).unwrap();
+        let mut value = HeaderValue::from_str(&format!("Bearer {token}")).unwrap();
         value.set_sensitive(true);
 
         self.header(http::header::AUTHORIZATION, value)

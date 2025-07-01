@@ -161,7 +161,7 @@ impl UriExtension for Uri {
         }
         query.push_str(&qs);
 
-        let pq = format!("{}?{}", path, query);
+        let pq = format!("{path}?{query}");
         parts.path_and_query = Some(http::uri::PathAndQuery::from_maybe_shared(pq)?);
 
         Ok(http::Uri::from_parts(parts)?)

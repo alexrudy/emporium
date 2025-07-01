@@ -51,7 +51,7 @@ impl HttpResponseError {
         let message = response
             .text()
             .await
-            .unwrap_or_else(|err| format!("Failed to read response body: {}", err));
+            .unwrap_or_else(|err| format!("Failed to read response body: {err}"));
 
         Self { status, message }
     }

@@ -183,7 +183,7 @@ where
                             let status = response.status();
                             let text = response.text().await?;
                             return Err(Box::new(PaginationError {
-                                message: format!("{}: {}", status, text),
+                                message: format!("{status}: {text}"),
                                 source: None,
                             }) as BoxError);
                         }

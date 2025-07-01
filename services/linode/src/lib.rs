@@ -125,11 +125,7 @@ impl LinodeClient {
         D: Serialize + Send,
         T: DeserializeOwned + Send + 'static,
     {
-        let request = self
-            .inner
-            .post(endpoint)
-            .json(data)
-            .map_err(api_client::Error::from)?;
+        let request = self.inner.post(endpoint).json(data)?;
         self.execute_and_deserialize(request).await
     }
 
@@ -138,11 +134,7 @@ impl LinodeClient {
         D: Serialize + Send,
         T: DeserializeOwned + Send + Sync + 'static,
     {
-        let request = self
-            .inner
-            .put(endpoint)
-            .json(data)
-            .map_err(api_client::Error::from)?;
+        let request = self.inner.put(endpoint).json(data)?;
         self.execute_and_deserialize(request).await
     }
 

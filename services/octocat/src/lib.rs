@@ -418,9 +418,7 @@ impl GithubApp {
         repository: &str,
     ) -> Result<GithubClient, Error> {
         let req = http::Request::get(format!(
-            "https://api.github.com/repos/{user}/{repository}/installation",
-            user = user,
-            repository = repository
+            "https://api.github.com/repos/{user}/{repository}/installation"
         ))
         .version(http::Version::HTTP_2)
         .bearer_auth(self.authentication_token(None)?.revealed())
