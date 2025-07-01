@@ -10,7 +10,7 @@ members = [
     "storage-driver",
     "services/linode",
     "services/octocat",
-    "services/tailscale",
+    "services/tailscale", "services/onepassword",
 ]
 
 [workspace.dependencies]
