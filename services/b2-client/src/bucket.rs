@@ -6,7 +6,7 @@ use camino::Utf8PathBuf;
 use echocache::Cached;
 use serde::{Deserialize, Serialize};
 
-use crate::{errors::B2ResponseExt, file::FileInfo, B2Client, B2RequestError};
+use crate::{B2Client, B2RequestError, errors::B2ResponseExt, file::FileInfo};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(from = "String", into = "String")]
@@ -159,7 +159,7 @@ struct FileListResponse {
 
 impl B2Client {
     /// Get a bucket by name.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "debug", skip(self))]
     pub async fn get_bucket(&self, name: &str) -> Result<Bucket, Arc<B2RequestError>> {
         let cache = if let Some(cache) = { self.buckets.get(name).map(|r| r.value().clone()) } {
             cache
@@ -191,7 +191,7 @@ impl B2Client {
     }
 
     /// List all buckets with the B2 API
-    #[tracing::instrument(skip_all)]
+    #[tracing::instrument(level = "trace", skip_all)]
     pub(crate) async fn b2_list_buckets<L: Into<SelectBucket>>(
         &self,
         select: L,
@@ -230,7 +230,7 @@ impl B2Client {
     }
 
     /// List all file names with the B2 API
-    #[tracing::instrument(skip_all, fields(bucket=%bucket.as_ref()))]
+    #[tracing::instrument(level="trace", skip_all, fields(bucket=%bucket.as_ref()))]
     pub(crate) async fn b2_list_file_names<B: AsRef<BucketID>>(
         &self,
         bucket: B,
@@ -271,8 +271,8 @@ mod tests {
     use hyperdriver::service::SharedService;
     use serde_json::json;
 
-    use crate::application::B2Authorization;
     use crate::B2ApplicationKey;
+    use crate::application::B2Authorization;
 
     use super::*;
 

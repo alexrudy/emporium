@@ -22,7 +22,7 @@ use tracing::Instrument;
 use crate::application::B2Authorization;
 use crate::file::FileID;
 use crate::file::{BzMime, FileInfo};
-use crate::{bucket::BucketID, errors::B2ResponseExt, B2Client, B2RequestError};
+use crate::{B2Client, B2RequestError, bucket::BucketID, errors::B2ResponseExt};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -208,7 +208,7 @@ impl B2Uploader {
 }
 
 impl B2Client {
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn b2_get_upload_url(&self, bucket: BucketID) -> Result<B2Uploader, B2RequestError> {
         tracing::trace!("requesting uploader");
 
@@ -224,7 +224,7 @@ impl B2Client {
         })
     }
 
-    #[tracing::instrument(skip_all, fields(file=%file))]
+    #[tracing::instrument(level = "trace", skip_all, fields(file=%file))]
     async fn b2_get_upload_part_url(&self, file: FileID) -> Result<B2Uploader, B2RequestError> {
         tracing::trace!("requesting part uploader");
 
@@ -240,7 +240,7 @@ impl B2Client {
         })
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn b2_start_large_file(
         &self,
         bucket: BucketID,
@@ -261,7 +261,7 @@ impl B2Client {
         Ok(info)
     }
 
-    #[tracing::instrument(skip_all, fields(file=%info.id()))]
+    #[tracing::instrument(level = "trace", skip_all, fields(file=%info.id()))]
     async fn b2_finish_large_file(
         &self,
         info: &FileInfo,
@@ -281,7 +281,7 @@ impl B2Client {
         Ok(())
     }
 
-    #[tracing::instrument(skip_all, fields(file=%info.id()))]
+    #[tracing::instrument(level = "trace", skip_all, fields(file=%info.id()))]
     async fn b2_cancel_large_file(&self, info: &FileInfo) -> Result<(), B2RequestError> {
         let body = CancelLargeFileBody {
             file_id: info.id().clone(),
@@ -296,7 +296,7 @@ impl B2Client {
         Ok(())
     }
 
-    #[tracing::instrument("part", skip_all, fields(part=%part))]
+    #[tracing::instrument(level = "debug", "part", skip_all, fields(part=%part))]
     async fn upload_part_inner(
         &self,
         semaphore: Arc<tokio::sync::Semaphore>,
@@ -474,7 +474,7 @@ impl B2Client {
         }
     }
 
-    #[tracing::instrument(skip_all, fields(%bucket, remote=%filename.file_name().unwrap()))]
+    #[tracing::instrument(level = "debug", skip_all, fields(%bucket, remote=%filename.file_name().unwrap()))]
     pub(crate) async fn upload_reader(
         &self,
         bucket: BucketID,
@@ -509,7 +509,7 @@ impl B2Client {
         .await
     }
 
-    #[tracing::instrument(skip_all, fields(%bucket, local=%local.file_name().unwrap(), remote=%remote.file_name().unwrap()))]
+    #[tracing::instrument(level = "debug", skip_all, fields(%bucket, local=%local.file_name().unwrap(), remote=%remote.file_name().unwrap()))]
     pub(crate) async fn upload_file_from_disk(
         &self,
         bucket: BucketID,
@@ -546,7 +546,7 @@ impl B2Client {
     }
 
     /// Upload a large file using the B2 API
-    #[tracing::instrument(skip_all, fields(%bucket, remote=%filename.file_name().unwrap()))]
+    #[tracing::instrument(level = "debug", skip_all, fields(%bucket, remote=%filename.file_name().unwrap()))]
     pub async fn upload_large_file(
         &self,
         bucket: BucketID,
@@ -561,7 +561,7 @@ impl B2Client {
             .b2_start_large_file(bucket, filename, content_type)
             .await?;
 
-        tracing::info!(file=?info.id(), "Multi-part upload");
+        tracing::debug!(file=?info.id(), "Starting Multi-part upload");
 
         match self
             .upload_multipart_inner(
@@ -574,7 +574,7 @@ impl B2Client {
             .await
         {
             Ok(_) => {
-                tracing::info!(file=?info.id(), "Finished multi-part upload");
+                tracing::debug!(file=?info.id(), "Finished multi-part upload");
                 Ok(())
             }
             Err(error) => {

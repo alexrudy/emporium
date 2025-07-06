@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use storage_driver::Metadata;
 
 use crate::bucket::BucketID;
-use crate::{errors::B2ResponseExt, B2Client, B2RequestError};
+use crate::{B2Client, B2RequestError, errors::B2ResponseExt};
 
 pub use self::mime::BzMime;
 
@@ -101,7 +101,7 @@ struct FileDeleteRequest<'f> {
 }
 
 impl B2Client {
-    #[tracing::instrument(skip_all, fields(%name))]
+    #[tracing::instrument(level="trace", skip_all, fields(%name))]
     pub(crate) async fn b2_delete_file_version(
         &self,
         name: &Utf8Path,
@@ -121,7 +121,7 @@ impl B2Client {
     }
 
     /// Delete a file from a bucket.
-    #[tracing::instrument(skip(self, bucket), fields(bucket=%bucket.as_ref()))]
+    #[tracing::instrument(level="debug", skip(self, bucket), fields(bucket=%bucket.as_ref()))]
     pub async fn delete_file<B: AsRef<BucketID>>(
         &self,
         bucket: B,

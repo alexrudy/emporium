@@ -100,7 +100,7 @@ impl OnePassword {
 
 impl OnePassword {
     /// Get a vault by name
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "debug", skip(self))]
     pub async fn get_vault(&self, name: &str) -> Result<Vault, OnePasswordError> {
         let query = format!("name eq \"{name}\"");
         tracing::trace!("Searching for vaults with query: {query}");

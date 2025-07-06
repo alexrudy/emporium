@@ -7,23 +7,23 @@ use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
 use std::time::Duration;
 
-use api_client::response::ResponseBodyExt as _;
-use api_client::response::ResponseExt as _;
-use api_client::uri::UriExtension as _;
 use api_client::ApiClient;
 use api_client::BearerAuth;
 use api_client::PaginatedData;
 use api_client::RequestBuilder;
 use api_client::Secret;
-use futures::stream::StreamExt;
+use api_client::response::ResponseBodyExt as _;
+use api_client::response::ResponseExt as _;
+use api_client::uri::UriExtension as _;
 use futures::Stream;
 use futures::TryStreamExt;
+use futures::stream::StreamExt;
 use hyperdriver::Body;
 use thiserror::Error;
 
-use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 
 /// Results from the Linode API can be errors or data.
 pub type Result<T, E = LinodeError> = std::result::Result<T, E>;
@@ -147,7 +147,7 @@ impl LinodeClient {
     }
 
     /// List all Linode instances.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "debug", skip(self))]
     pub async fn list_lindoe_instances(&self) -> impl Stream<Item = Result<Instance>> {
         self.get_paginated("linode/instances")
             .map_ok(Instance::new)
@@ -155,7 +155,7 @@ impl LinodeClient {
     }
 
     /// List all domains managed by Linode.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "debug", skip(self))]
     pub fn list_linode_domains(&self) -> Paginated<Domain> {
         self.get_paginated("domains")
     }
@@ -166,7 +166,7 @@ impl LinodeClient {
     }
 
     /// Get a linode domain by its name.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "debug", skip(self))]
     pub async fn get_linode_domain(&self, domain: &str) -> Result<Option<Domain>> {
         match self
             .get_paginated("domains")
@@ -181,7 +181,7 @@ impl LinodeClient {
     }
 
     /// List all records for a domain.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "debug", skip(self))]
     pub fn list_linode_domain_records(
         &self,
         domain: &Domain,
@@ -218,7 +218,7 @@ impl LinodeClient {
     }
 
     /// Get a domain record by its name and type.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "debug", skip(self))]
     pub async fn get_linode_domain_record(
         &self,
         domain: &Domain,
@@ -236,7 +236,7 @@ impl LinodeClient {
     }
 
     /// Update a domain record in Linode.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "debug", skip(self))]
     pub async fn set_linode_domain_record(
         &self,
         recordid: &RecordID,

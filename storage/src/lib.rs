@@ -72,7 +72,7 @@ pub enum StorageConfig {
 
 impl StorageConfig {
     /// Build a [`Storage`] instance from the configuration.
-    #[tracing::instrument]
+    #[tracing::instrument(level = "trace")]
     pub async fn build(self) -> Result<Storage, StorageError> {
         let client: Storage = match self {
             StorageConfig::Memory { bucket } => MemoryStorage::with_buckets(&[&bucket]).into(),
@@ -151,7 +151,7 @@ impl Storage {
     }
 
     /// Get file metadata.
-    #[tracing::instrument(skip(self), fields(driver=self.driver.name()))]
+    #[tracing::instrument(level = "debug", skip(self), fields(driver=self.driver.name()))]
     pub async fn metadata(
         &self,
         bucket: &str,
@@ -161,7 +161,7 @@ impl Storage {
     }
 
     /// Download a file to a writer.
-    #[tracing::instrument(skip(self, writer), fields(driver=self.driver.name()))]
+    #[tracing::instrument(level = "debug", skip(self, writer), fields(driver=self.driver.name()))]
     pub async fn download<'d, W>(
         &'d self,
         bucket: &str,
@@ -177,7 +177,7 @@ impl Storage {
     }
 
     /// Upload a file from a reader.
-    #[tracing::instrument(skip(self, reader), fields(driver=self.driver.name(), bucket))]
+    #[tracing::instrument(level = "debug", skip(self, reader), fields(driver=self.driver.name(), bucket))]
     pub async fn upload<'d, R>(
         &'d self,
         bucket: &str,
@@ -215,7 +215,7 @@ impl Storage {
     }
 
     /// List files in a bucket.
-    #[tracing::instrument(skip(self), fields(driver=self.driver.name(), bucket))]
+    #[tracing::instrument(level = "debug", skip(self), fields(driver=self.driver.name(), bucket))]
     pub async fn list(
         &self,
         bucket: &str,
@@ -225,7 +225,7 @@ impl Storage {
     }
 
     /// Delete a file.
-    #[tracing::instrument(skip(self), fields(driver=self.driver.name()))]
+    #[tracing::instrument(level = "debug", skip(self), fields(driver=self.driver.name()))]
     pub async fn delete(&self, bucket: &str, path: &Utf8Path) -> Result<(), StorageError> {
         self.driver.delete(bucket, path).await
     }
@@ -246,13 +246,13 @@ pub struct StorageBucket {
 
 impl StorageBucket {
     /// Get file metadata.
-    #[tracing::instrument(skip(self), fields(driver=self.driver.name()))]
+    #[tracing::instrument(level = "debug", skip(self), fields(driver=self.driver.name()))]
     pub async fn metadata(&self, remote: &Utf8Path) -> Result<Metadata, StorageError> {
         self.driver.metadata(&self.bucket, remote).await
     }
 
     /// Download a file to a writer.
-    #[tracing::instrument(skip(self, writer), fields(driver=self.driver.name()))]
+    #[tracing::instrument(level = "debug", skip(self, writer), fields(driver=self.driver.name()))]
     pub async fn download<'d, W>(
         &'d self,
         remote: &Utf8Path,
@@ -267,7 +267,7 @@ impl StorageBucket {
     }
 
     /// Upload a file from a reader.
-    #[tracing::instrument(skip(self, reader), fields(driver=self.driver.name(), bucket=self.bucket))]
+    #[tracing::instrument(level = "debug", skip(self, reader), fields(driver=self.driver.name(), bucket=self.bucket))]
     pub async fn upload<'d, R>(
         &'d self,
         remote: &Utf8Path,
@@ -300,13 +300,13 @@ impl StorageBucket {
     }
 
     /// List files in a bucket.
-    #[tracing::instrument(skip(self), fields(driver=self.driver.name(), bucket=self.bucket))]
+    #[tracing::instrument(level = "debug", skip(self), fields(driver=self.driver.name(), bucket=self.bucket))]
     pub async fn list(&self, prefix: Option<&Utf8Path>) -> Result<Vec<String>, StorageError> {
         self.driver.list(&self.bucket, prefix).await
     }
 
     /// Delete a file.
-    #[tracing::instrument(skip(self), fields(driver=self.driver.name(), bucket=self.bucket))]
+    #[tracing::instrument(level = "debug", skip(self), fields(driver=self.driver.name(), bucket=self.bucket))]
     pub async fn delete(&self, path: &Utf8Path) -> Result<(), StorageError> {
         self.driver.delete(&self.bucket, path).await
     }

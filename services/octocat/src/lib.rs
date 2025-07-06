@@ -411,7 +411,7 @@ impl GithubApp {
     }
 
     /// Get a github client with an installation token for a repository.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     pub async fn installation_for_repo(
         self,
         user: &str,
@@ -442,7 +442,7 @@ impl GithubApp {
     }
 
     /// Get a github client with an installation token.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "debug", skip(self))]
     pub async fn installation(self, installation_id: u64) -> Result<GithubClient, Error> {
         let access = self.installation_token(installation_id).await?;
         Ok(GithubClient::from_app(self, access, installation_id))
