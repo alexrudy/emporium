@@ -6,7 +6,7 @@ use camino::Utf8PathBuf;
 use echocache::Cached;
 use serde::{Deserialize, Serialize};
 
-use crate::{B2Client, B2RequestError, errors::B2ResponseExt, file::FileInfo};
+use crate::{errors::B2ResponseExt, file::FileInfo, B2Client, B2RequestError};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(from = "String", into = "String")]
@@ -271,8 +271,8 @@ mod tests {
     use hyperdriver::service::SharedService;
     use serde_json::json;
 
-    use crate::B2ApplicationKey;
     use crate::application::B2Authorization;
+    use crate::B2ApplicationKey;
 
     use super::*;
 

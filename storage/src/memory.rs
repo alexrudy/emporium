@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use chrono::{DateTime, Utc};
-use eyre::{Context, eyre};
+use eyre::{eyre, Context};
 use tokio::{io::AsyncWriteExt, sync::RwLock};
 
 use storage_driver::{Driver, Metadata, Reader, StorageError, Writer};

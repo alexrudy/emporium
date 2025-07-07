@@ -22,7 +22,7 @@ use tracing::Instrument;
 use crate::application::B2Authorization;
 use crate::file::FileID;
 use crate::file::{BzMime, FileInfo};
-use crate::{B2Client, B2RequestError, bucket::BucketID, errors::B2ResponseExt};
+use crate::{bucket::BucketID, errors::B2ResponseExt, B2Client, B2RequestError};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]

@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use storage_driver::Metadata;
 
 use crate::bucket::BucketID;
-use crate::{B2Client, B2RequestError, errors::B2ResponseExt};
+use crate::{errors::B2ResponseExt, B2Client, B2RequestError};
 
 pub use self::mime::BzMime;
 

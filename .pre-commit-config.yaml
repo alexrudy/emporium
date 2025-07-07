@@ -15,13 +15,7 @@ repos:
       - id: end-of-file-fixer
       - id: check-yaml
       - id: check-added-large-files
-  - repo: https://github.com/doublify/pre-commit-rust
-    rev: v1.0
-    hooks:
-      - id: fmt
-      - id: cargo-check
-      - id: clippy
-        args: ["--all-features", "--", "-D", "warnings", "-A", "unknown-lints"]
+
   - repo: local
     hooks:
       - id: cargo-machete
@@ -35,5 +29,19 @@ repos:
         name: prevent dbg!(..) in rust code
         language: pygrep
         entry: dbg!
+        types:
+          - "rust"
+      - id: cargo-fmt
+        name: cargo format
+        entry: cargo fmt
+        pass_filenames: false
+        language: rust
+        types:
+          - "rust"
+      - id: cargo-check
+        name: cargo check
+        entry: cargo check
+        pass_filenames: false
+        language: rust
         types:
           - "rust"

@@ -7,23 +7,23 @@ use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
 use std::time::Duration;
 
+use api_client::response::ResponseBodyExt as _;
+use api_client::response::ResponseExt as _;
+use api_client::uri::UriExtension as _;
 use api_client::ApiClient;
 use api_client::BearerAuth;
 use api_client::PaginatedData;
 use api_client::RequestBuilder;
 use api_client::Secret;
-use api_client::response::ResponseBodyExt as _;
-use api_client::response::ResponseExt as _;
-use api_client::uri::UriExtension as _;
+use futures::stream::StreamExt;
 use futures::Stream;
 use futures::TryStreamExt;
-use futures::stream::StreamExt;
 use hyperdriver::Body;
 use thiserror::Error;
 
+use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde::Serialize;
-use serde::de::DeserializeOwned;
 
 /// Results from the Linode API can be errors or data.
 pub type Result<T, E = LinodeError> = std::result::Result<T, E>;

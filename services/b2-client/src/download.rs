@@ -3,7 +3,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 use http_body_util::BodyExt as _;
 use hyperdriver::Body;
 
-use crate::{B2Client, B2RequestError, errors::B2ResponseExt};
+use crate::{errors::B2ResponseExt, B2Client, B2RequestError};
 const B2_FILE_URL_BASE: &str = "file";
 
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
