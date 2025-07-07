@@ -17,11 +17,70 @@ pub struct VaultInfo {
     pub id: VaultID,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[allow(missing_docs)]
+pub enum Category {
+    Login,
+    Password,
+    ApiCredential,
+    Server,
+    Database,
+    CreditCard,
+    Membership,
+    Passport,
+    SoftwareLicense,
+    OutdoorLicense,
+    SecureNote,
+    WirelessRouter,
+    BankAccount,
+    DriverLicense,
+    Identity,
+    RewardProgram,
+    Document,
+    EmailAccount,
+    SocialSecurityNumber,
+    MedicalRecord,
+    SshKey,
+}
+
+impl Category {
+    /// Can this item be used as a target for looking up a secret?
+    pub fn is_secret(&self) -> bool {
+        match self {
+            Category::Login => true,
+            Category::Password => false,
+            Category::ApiCredential => true,
+            Category::Server => true,
+            Category::Database => true,
+            Category::CreditCard => false,
+            Category::Membership => false,
+            Category::Passport => false,
+            Category::SoftwareLicense => true,
+            Category::OutdoorLicense => false,
+            Category::SecureNote => false,
+            Category::WirelessRouter => true,
+            Category::BankAccount => false,
+            Category::DriverLicense => false,
+            Category::Identity => false,
+            Category::RewardProgram => false,
+            Category::Document => false,
+            Category::EmailAccount => true,
+            Category::SocialSecurityNumber => false,
+            Category::MedicalRecord => false,
+            Category::SshKey => true,
+        }
+    }
+}
+
 /// Information about an item in 1Password
 #[derive(Debug, Clone, Deserialize)]
 pub struct ItemInfo {
     /// The 1password identifier for this item.
     pub id: ItemID,
+
+    /// The 1Password category this item belongs to.
+    pub category: Category,
 
     /// The title of this item.
     pub title: String,

@@ -4,7 +4,11 @@ use api_client::Secret;
 use thiserror::Error;
 use url::Url;
 
-use crate::{OnePassword, client::OnePasswordError, models::vaults::Vault};
+use crate::{
+    OnePassword,
+    client::{Kind, OnePasswordError},
+    models::{items::Item, vaults::Vault},
+};
 
 const HOST: &str = "OP_CONNECT_HOST";
 const TOKEN: &str = "OP_CONNECT_TOKEN";
@@ -183,10 +187,20 @@ impl SecretManager {
         })
     }
 
+    async fn get_item(&self, name: &str) -> Result<Item, OnePasswordError> {
+        let mut items = self.client.get_items_by_name(name).await?;
+        items.retain(|item| item.category.is_secret());
+        let summary = items
+            .pop()
+            .ok_or_else(|| OnePasswordError::NotFound(Kind::Item, format!("{name} as secret")))?;
+
+        self.client.get_item(&summary.id).await
+    }
+
     /// Get a 1password secret by item name. Will take the first concealed, non-empty field
     /// in the item.
     pub async fn get_by_name(&self, name: &str) -> Result<Secret, OnePasswordError> {
-        let item = self.client.get_item_by_name(name).await?;
+        let item = self.get_item(name).await?;
 
         let field = item
             .concealed()
@@ -198,7 +212,7 @@ impl SecretManager {
 
     /// Get a specific field from a 1Password item.
     async fn get_by_field(&self, name: &str, field: &str) -> Result<Secret, SecretsErrorKind> {
-        let item = self.client.get_item_by_name(name).await?;
+        let item = self.get_item(name).await?;
 
         let field = item
             .fields()
@@ -221,7 +235,7 @@ impl SecretManager {
         section: &str,
         field: &str,
     ) -> Result<Secret, SecretsErrorKind> {
-        let item = self.client.get_item_by_name(name).await?;
+        let item = self.get_item(name).await?;
 
         let section = item
             .sections()

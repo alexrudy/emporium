@@ -2,15 +2,12 @@
 
 use std::ops::Deref;
 
-use api_client::{
-    ApiClient,
-    response::{ResponseBodyExt as _, ResponseExt as _},
-};
+use api_client::ApiClient;
 use serde::Deserialize;
 
-use crate::client::{Kind, OnePasswordApiAuthentication, OnePasswordError};
+use crate::client::{Kind, OnePassowrdResponse, OnePasswordApiAuthentication, OnePasswordError};
 
-use super::items::{Item, ItemID, ItemInfo};
+use super::items::{Category, Item, ItemID, ItemInfo};
 
 crate::newtype!(pub VaultID);
 
@@ -30,9 +27,17 @@ pub struct Vault {
     client: ApiClient<OnePasswordApiAuthentication>,
 }
 
+/// The summary returned when items are queried.
 #[derive(Debug, Clone, Deserialize)]
-struct ItemSummary {
-    id: ItemID,
+pub struct ItemSummary {
+    /// Identifier of the item
+    pub id: ItemID,
+
+    /// Title of the item
+    pub title: String,
+
+    /// OnePassword Category of the item
+    pub category: Category,
 }
 
 impl Vault {
@@ -57,6 +62,23 @@ impl Vault {
         &self.name
     }
 
+    /// Get all items with the given name.
+    pub async fn get_items_by_name(
+        &self,
+        name: &str,
+    ) -> Result<Vec<ItemSummary>, OnePasswordError> {
+        let query = format!("title eq \"{name}\"");
+
+        let response = self
+            .client
+            .get(&format!("/v1/vaults/{vault}/items", vault = self.id))
+            .query(&[&("filter", query)])?
+            .send()
+            .await?;
+
+        response.deserialize().await
+    }
+
     /// Look for an item in the vault by name.
     pub async fn get_item_by_name(&self, name: &str) -> Result<Item, OnePasswordError> {
         let query = format!("title eq \"{name}\"");
@@ -64,29 +86,11 @@ impl Vault {
         let response = self
             .client
             .get(&format!("/v1/vaults/{vault}/items", vault = self.id))
-            .query(&[&("filter", query)])
-            .map_err(OnePasswordError::Request)?
+            .query(&[&("filter", query)])?
             .send()
-            .await
-            .map_err(|err| OnePasswordError::Request(api_client::Error::Request(err)))?;
+            .await?;
 
-        if !response.status().is_success() {
-            if response.status().is_client_error() || response.status().is_server_error() {
-                tracing::error!("Error response from onepassword: {:?}", response.status());
-            }
-
-            let status = response.status();
-            let message = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "No message".into());
-            return Err(OnePasswordError::Response { status, message });
-        }
-
-        let mut items: Vec<ItemSummary> = response
-            .json()
-            .await
-            .map_err(|err| OnePasswordError::Request(api_client::Error::ResponseBody(err)))?;
+        let mut items: Vec<ItemSummary> = response.deserialize().await?;
 
         match items.deref() {
             [] => Err(OnePasswordError::NotFound(Kind::Item, name.into())),
@@ -109,25 +113,9 @@ impl Vault {
                 id = id
             ))
             .send()
-            .await
-            .map_err(|err| OnePasswordError::Request(api_client::Error::Request(err)))?;
+            .await?;
 
-        if !response.status().is_success() {
-            if response.status().is_client_error() || response.status().is_server_error() {
-                tracing::error!("Error response from onepassword: {:?}", response.status());
-            }
-
-            let status = response.status();
-            let message = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "No message".into());
-            return Err(OnePasswordError::Response { status, message });
-        }
-        let info: ItemInfo = response
-            .json()
-            .await
-            .map_err(|err| OnePasswordError::Request(api_client::Error::ResponseBody(err)))?;
+        let info: ItemInfo = response.deserialize().await?;
 
         Ok(Item::new(info, self.client.clone()))
     }

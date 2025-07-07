@@ -1201,6 +1201,7 @@ dependencies = [
  "api-client",
  "camino",
  "http",
+ "hyperdriver",
  "percent-encoding",
  "serde",
  "thiserror",

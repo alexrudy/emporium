@@ -5,6 +5,7 @@ use api_client::{
     ApiClient, Authentication, Secret,
     response::{ResponseBodyExt as _, ResponseExt as _},
 };
+use serde::de::DeserializeOwned;
 
 use crate::models::vaults::{Vault, VaultSummary};
 
@@ -84,6 +85,18 @@ pub enum OnePasswordError {
     },
 }
 
+impl From<http::Error> for OnePasswordError {
+    fn from(value: http::Error) -> Self {
+        Self::Request(value.into())
+    }
+}
+
+impl From<hyperdriver::client::Error> for OnePasswordError {
+    fn from(value: hyperdriver::client::Error) -> Self {
+        Self::Request(value.into())
+    }
+}
+
 /// A client for accessing 1Password secrets
 #[derive(Debug, Clone)]
 pub struct OnePassword {
@@ -118,28 +131,11 @@ impl OnePassword {
         let response = self
             .client
             .get("v1/vaults")
-            .query(&[&("filter", query)])
-            .map_err(OnePasswordError::Request)?
+            .query(&[&("filter", query)])?
             .send()
-            .await
-            .map_err(|err| OnePasswordError::Request(api_client::Error::Request(err)))?;
+            .await?;
 
-        if !response.status().is_success() {
-            if response.status().is_client_error() || response.status().is_server_error() {
-                tracing::error!("Error response from onepassword: {:?}", response.status());
-            }
-
-            let status = response.status();
-            let message = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "No message".into());
-            return Err(OnePasswordError::Response { status, message });
-        }
-        let mut vaults: Vec<VaultSummary> = response
-            .json()
-            .await
-            .map_err(|err| OnePasswordError::Request(api_client::Error::ResponseBody(err)))?;
+        let mut vaults: Vec<VaultSummary> = response.deserialize().await?;
 
         tracing::trace!("Found {} vaults", vaults.len());
         match vaults.deref() {
@@ -151,5 +147,32 @@ impl OnePassword {
         let vault = vaults.pop().unwrap();
         tracing::debug!(vault = ?vault.id, "Found vault");
         Ok(Vault::new(vault, self.client.clone()))
+    }
+}
+
+pub(crate) trait OnePassowrdResponse: Sized {
+    async fn deserialize<T>(self) -> Result<T, OnePasswordError>
+    where
+        T: DeserializeOwned;
+}
+
+impl OnePassowrdResponse for api_client::response::Response {
+    async fn deserialize<T>(self) -> Result<T, OnePasswordError>
+    where
+        T: DeserializeOwned,
+    {
+        if !self.status().is_success() {
+            if self.status().is_client_error() || self.status().is_server_error() {
+                tracing::error!("Error response from onepassword: {:?}", self.status());
+            }
+
+            let status = self.status();
+            let message = self.text().await.unwrap_or_else(|_| "No message".into());
+            return Err(OnePasswordError::Response { status, message });
+        }
+
+        self.json()
+            .await
+            .map_err(|err| OnePasswordError::Request(api_client::Error::ResponseBody(err)))
     }
 }

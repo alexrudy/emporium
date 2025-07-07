@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 http.workspace = true
+hyperdriver.workspace = true
 api-client = { path = "../../api-client" }
 serde.workspace = true
 camino.workspace = true
