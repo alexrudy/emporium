@@ -1,7 +1,7 @@
 use api_client::Secret;
 use url::Url;
 
-use crate::{ClientConfig, OnePassword, client::OnePasswordError, models::vaults::Vault};
+use crate::{OnePassword, client::OnePasswordError, models::vaults::Vault};
 
 const HOST: &str = "OP_CONNECT_HOST";
 const TOKEN: &str = "OP_CONNECT_TOKEN";
