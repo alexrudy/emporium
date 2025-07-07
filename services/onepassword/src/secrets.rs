@@ -1,7 +1,7 @@
 use api_client::Secret;
 use url::Url;
 
-use crate::{OnePassword, client::OnePasswordError, models::vaults::Vault};
+use crate::{ClientConfig, OnePassword, client::OnePasswordError, models::vaults::Vault};
 
 const HOST: &str = "OP_CONNECT_HOST";
 const TOKEN: &str = "OP_CONNECT_TOKEN";
@@ -25,6 +25,35 @@ fn read_env_var(name: &str) -> Result<String, OnePasswordError> {
     }
 
     Ok(value)
+}
+
+impl crate::OnePasswordConfig {
+    /// Create a new 1Password configuration from environment variables.
+    pub fn from_environment() -> Result<Self, OnePasswordError> {
+        let client = crate::ClientConfig::from_environment()?;
+        let vault = read_env_var(VAULT)?;
+
+        Ok(Self {
+            client: Some(client),
+            vault,
+        })
+    }
+}
+
+impl crate::ClientConfig {
+    /// Construct a client config from the cannonical environment variables.
+    pub fn from_environment() -> Result<Self, OnePasswordError> {
+        let host: http::Uri = read_env_var(HOST)?.parse().map_err(|_| {
+            OnePasswordError::Configuration(format!("Environment variable {HOST} not a URL!"))
+        })?;
+
+        let token = read_env_var(TOKEN)?;
+
+        Ok(Self {
+            token: token.into(),
+            host,
+        })
+    }
 }
 
 impl SecretManager {
@@ -141,6 +170,12 @@ impl SecretManager {
             .value
             .clone()
             .ok_or_else(|| SecretsError::NotFound(name.into()))
+    }
+}
+
+impl From<Vault> for SecretManager {
+    fn from(vault: Vault) -> Self {
+        SecretManager { client: vault }
     }
 }
 
