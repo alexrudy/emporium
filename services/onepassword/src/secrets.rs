@@ -1,3 +1,5 @@
+use std::{borrow::Cow, str::Utf8Error};
+
 use api_client::Secret;
 use url::Url;
 
@@ -25,6 +27,10 @@ fn read_env_var(name: &str) -> Result<String, OnePasswordError> {
     }
 
     Ok(value)
+}
+
+fn percent_decode(text: &str) -> Result<Cow<'_, str>, Utf8Error> {
+    percent_encoding::percent_decode(text.as_bytes()).decode_utf8()
 }
 
 impl crate::OnePasswordConfig {
@@ -109,14 +115,20 @@ impl SecretManager {
             .path_segments()
             .ok_or_else(|| SecretsError::InvalidUrl(url.clone()))?;
 
-        let name = segments.next().unwrap();
-        let field = segments.next_back().unwrap();
-        let section = segments.next();
+        let name = percent_decode(segments.next().unwrap())
+            .map_err(|_| SecretsError::InvalidUrl(url.clone()))?;
+        let field = percent_decode(segments.next_back().unwrap())
+            .map_err(|_| SecretsError::InvalidUrl(url.clone()))?;
+        let section = segments
+            .next()
+            .map(|section| percent_decode(section))
+            .transpose()
+            .map_err(|_| SecretsError::InvalidUrl(url.clone()))?;
 
         if let Some(section) = section {
-            self.get_by_section_field(name, section, field).await
+            self.get_by_section_field(&name, &section, &field).await
         } else {
-            self.get_by_field(name, field).await
+            self.get_by_field(&name, &field).await
         }
     }
 
