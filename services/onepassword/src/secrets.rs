@@ -239,7 +239,10 @@ impl SecretManager {
 
         let section = item
             .sections()
-            .find(|s| s.title().eq_ignore_ascii_case(section))
+            .find(|s| {
+                s.title()
+                    .is_some_and(|title| title.eq_ignore_ascii_case(section))
+            })
             .ok_or_else(|| SecretsErrorKind::NotFound(name.into()))?;
 
         let field = section

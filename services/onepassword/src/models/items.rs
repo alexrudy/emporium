@@ -175,7 +175,11 @@ impl Item {
             .sections
             .iter()
             .flatten()
-            .find(|s| s.label.eq_ignore_ascii_case(title))
+            .find(|s| {
+                s.label
+                    .as_deref()
+                    .is_some_and(|label| label.eq_ignore_ascii_case(title))
+            })
             .map(|s| SectionRef {
                 item: self,
                 section: s,
@@ -205,8 +209,8 @@ pub struct SectionRef<'i> {
 
 impl<'i> SectionRef<'i> {
     /// Get the title of the section
-    pub fn title(&self) -> &str {
-        &self.section.label
+    pub fn title(&self) -> Option<&str> {
+        self.section.label.as_deref()
     }
 
     /// Get the ID of the section
@@ -346,5 +350,5 @@ pub struct Section {
     pub id: SectionID,
 
     /// User-facing label of the section
-    pub label: String,
+    pub label: Option<String>,
 }
