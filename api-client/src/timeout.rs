@@ -36,7 +36,7 @@ impl AtomicDuration {
 
 /// A shared duration that can be cloned, and set from differnet clones.
 ///
-/// Effectively an Arc<Duration>.
+/// Effectively an `Arc<Duration>`.
 #[derive(Debug, Clone)]
 pub struct SharedDuration {
     duration: Arc<AtomicDuration>,

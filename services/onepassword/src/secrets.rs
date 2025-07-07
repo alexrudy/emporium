@@ -104,7 +104,7 @@ impl<'s> SecretReference<'s> {
 
         let mut segments = url
             .path_segments()
-            .ok_or_else(|| InvalidSecretUrl::MissingPathSegments)?;
+            .ok_or(InvalidSecretUrl::MissingPathSegments)?;
 
         let item = percent_decode(segments.next().unwrap())
             .map_err(|_| InvalidSecretUrl::Utf8Error { field: "name" })?;
@@ -112,7 +112,7 @@ impl<'s> SecretReference<'s> {
             .map_err(|_| InvalidSecretUrl::Utf8Error { field: "field" })?;
         let section = segments
             .next()
-            .map(|section| percent_decode(section))
+            .map(percent_decode)
             .transpose()
             .map_err(|_| InvalidSecretUrl::Utf8Error { field: "section" })?;
 
@@ -143,7 +143,7 @@ impl SecretManager {
     pub fn api_client(
         &self,
     ) -> &api_client::ApiClient<crate::client::OnePasswordApiAuthentication> {
-        &self.client.api_client()
+        self.client.api_client()
     }
 
     /// Construct a 1Password Secrets Manager from environment variables
@@ -176,7 +176,7 @@ impl SecretManager {
         url: &Url,
     ) -> Result<Secret, SecretsError> {
         if let Some(section) = &reference.section {
-            self.get_by_section_field(&reference.item, &section, &reference.field)
+            self.get_by_section_field(&reference.item, section, &reference.field)
                 .await
         } else {
             self.get_by_field(&reference.item, &reference.field).await

@@ -2,13 +2,14 @@
 name = "onepassword"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
 
 [dependencies]
 http.workspace = true
 hyperdriver.workspace = true
 api-client = { path = "../../api-client" }
 serde.workspace = true
-camino.workspace = true
+camino = { workspace = true, features = ["serde1"] }
 percent-encoding.workspace = true
 tracing.workspace = true
 thiserror.workspace = true

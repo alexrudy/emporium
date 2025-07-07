@@ -33,7 +33,8 @@ wildcards = "allow"
 highlight = "all"
 workspace-default-features = "allow"
 external-default-features = "allow"
-skip-tree = ["windows-targets", "windows-sys"]
+skip-tree = ["windows-targets", "windows-sys", "sentry-core"]
+skip = ["hashbrown"]
 
 [sources]
 unknown-registry = "warn"

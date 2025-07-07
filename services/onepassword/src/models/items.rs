@@ -327,7 +327,7 @@ impl<'i> File<'i> {
         self.info.size
     }
 
-    /// Download the contents of the file and collect it in a Vec<u8> of bytes.
+    /// Download the contents of the file and collect it in a `Vec<u8>` of bytes.
     pub async fn content(&self) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
         self.client
             .get(self.info.content_path.as_str())
