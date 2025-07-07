@@ -101,6 +101,15 @@ impl Item {
         self.info.fields.iter().flatten()
     }
 
+    /// Iterates over the concealed fields for this item.
+    pub fn concealed(&self) -> impl Iterator<Item = &'_ Field> + '_ {
+        self.info
+            .fields
+            .iter()
+            .flatten()
+            .filter(|field| field.r#type.concealed())
+    }
+
     /// Get a section by title.
     pub fn get_section(&self, title: &str) -> Option<SectionRef<'_>> {
         self.info

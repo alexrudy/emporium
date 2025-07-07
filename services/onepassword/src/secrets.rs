@@ -1,6 +1,7 @@
 use std::{borrow::Cow, str::Utf8Error};
 
 use api_client::Secret;
+use thiserror::Error;
 use url::Url;
 
 use crate::{OnePassword, client::OnePasswordError, models::vaults::Vault};
@@ -62,6 +63,64 @@ impl crate::ClientConfig {
     }
 }
 
+#[derive(Debug, Error)]
+pub enum InvalidSecretUrl {
+    #[error("Unexpected URL scheme, expected op://")]
+    UnexpectedScheme,
+
+    #[error("Missing path segments (must have at least op://<vault>/<item>/<field>")]
+    MissingPathSegments,
+
+    #[error("The URL host component is missing (it should be the name of the 1Password vault)")]
+    MissingVault,
+
+    #[error("The percent decoding of {field} yeilded non-utf-8 characters")]
+    Utf8Error { field: &'static str },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SecretReference<'s> {
+    vault: Cow<'s, str>,
+    item: Cow<'s, str>,
+    section: Option<Cow<'s, str>>,
+    field: Cow<'s, str>,
+}
+
+impl<'s> SecretReference<'s> {
+    pub fn parse(url: &'s Url) -> Result<SecretReference<'s>, InvalidSecretUrl> {
+        if url.scheme() != "op" {
+            return Err(InvalidSecretUrl::UnexpectedScheme);
+        }
+
+        if url.path_segments().map(|c| c.count()).unwrap_or(0) < 2 {
+            return Err(InvalidSecretUrl::MissingPathSegments);
+        }
+
+        let vault = url.host_str().ok_or(InvalidSecretUrl::MissingVault)?;
+
+        let mut segments = url
+            .path_segments()
+            .ok_or_else(|| InvalidSecretUrl::MissingPathSegments)?;
+
+        let item = percent_decode(segments.next().unwrap())
+            .map_err(|_| InvalidSecretUrl::Utf8Error { field: "name" })?;
+        let field = percent_decode(segments.next_back().unwrap())
+            .map_err(|_| InvalidSecretUrl::Utf8Error { field: "field" })?;
+        let section = segments
+            .next()
+            .map(|section| percent_decode(section))
+            .transpose()
+            .map_err(|_| InvalidSecretUrl::Utf8Error { field: "section" })?;
+
+        Ok(Self {
+            vault: vault.into(),
+            item,
+            section,
+            field,
+        })
+    }
+}
+
 impl SecretManager {
     /// Construct and connect a new 1Password Secrets manager
     pub async fn new(
@@ -99,54 +158,46 @@ impl SecretManager {
     pub async fn get<U: Into<Url>>(&self, address: U) -> Result<Secret, SecretsError> {
         let url: Url = address.into();
 
-        if url.scheme() != "op" {
-            return Err(SecretsError::InvalidUrl(url.clone()));
-        }
+        let reference = SecretReference::parse(&url).map_err(|error| SecretsError {
+            kind: SecretsErrorKind::InvalidUrl(error),
+            url: url.clone(),
+        })?;
 
-        if url.path_segments().map(|c| c.count()).unwrap_or(0) < 2 {
-            return Err(SecretsError::InvalidUrl(url.clone()));
-        }
+        self.get_reference(&reference, &url).await
+    }
 
-        if url.host_str() != Some(self.client.name()) {
-            return Err(SecretsError::InvalidUrl(url.clone()));
-        }
-
-        let mut segments = url
-            .path_segments()
-            .ok_or_else(|| SecretsError::InvalidUrl(url.clone()))?;
-
-        let name = percent_decode(segments.next().unwrap())
-            .map_err(|_| SecretsError::InvalidUrl(url.clone()))?;
-        let field = percent_decode(segments.next_back().unwrap())
-            .map_err(|_| SecretsError::InvalidUrl(url.clone()))?;
-        let section = segments
-            .next()
-            .map(|section| percent_decode(section))
-            .transpose()
-            .map_err(|_| SecretsError::InvalidUrl(url.clone()))?;
-
-        if let Some(section) = section {
-            self.get_by_section_field(&name, &section, &field).await
+    async fn get_reference(
+        &self,
+        reference: &SecretReference<'_>,
+        url: &Url,
+    ) -> Result<Secret, SecretsError> {
+        if let Some(section) = &reference.section {
+            self.get_by_section_field(&reference.item, &section, &reference.field)
+                .await
         } else {
-            self.get_by_field(&name, &field).await
+            self.get_by_field(&reference.item, &reference.field).await
         }
+        .map_err(|error| SecretsError {
+            kind: error,
+            url: url.clone(),
+        })
     }
 
     /// Get a 1password secret by item name. Will take the first concealed, non-empty field
     /// in the item.
-    pub async fn get_by_name(&self, name: &str) -> Result<Secret, SecretsError> {
+    pub async fn get_by_name(&self, name: &str) -> Result<Secret, OnePasswordError> {
         let item = self.client.get_item_by_name(name).await?;
 
         let field = item
-            .fields()
-            .find(|f| f.r#type.concealed() && f.value.is_some())
-            .ok_or_else(|| SecretsError::NotFound(name.into()))?;
+            .concealed()
+            .find(|f| f.value.is_some())
+            .ok_or_else(|| OnePasswordError::NotFound(crate::client::Kind::Item, name.into()))?;
 
         Ok(field.value.clone().unwrap())
     }
 
     /// Get a specific field from a 1Password item.
-    pub async fn get_by_field(&self, name: &str, field: &str) -> Result<Secret, SecretsError> {
+    async fn get_by_field(&self, name: &str, field: &str) -> Result<Secret, SecretsErrorKind> {
         let item = self.client.get_item_by_name(name).await?;
 
         let field = item
@@ -155,27 +206,27 @@ impl SecretManager {
                 f.label.as_deref().map(|s| s.to_ascii_lowercase())
                     == Some(field.to_ascii_lowercase())
             })
-            .ok_or_else(|| SecretsError::NotFound(name.into()))?;
+            .ok_or_else(|| SecretsErrorKind::NotFound(name.into()))?;
 
         field
             .value
             .clone()
-            .ok_or_else(|| SecretsError::NotFound(name.into()))
+            .ok_or_else(|| SecretsErrorKind::NotFound(name.into()))
     }
 
     /// Get a specific field in a specifci section of a 1password item.
-    pub async fn get_by_section_field(
+    async fn get_by_section_field(
         &self,
         name: &str,
         section: &str,
         field: &str,
-    ) -> Result<Secret, SecretsError> {
+    ) -> Result<Secret, SecretsErrorKind> {
         let item = self.client.get_item_by_name(name).await?;
 
         let section = item
             .sections()
             .find(|s| s.title().eq_ignore_ascii_case(section))
-            .ok_or_else(|| SecretsError::NotFound(name.into()))?;
+            .ok_or_else(|| SecretsErrorKind::NotFound(name.into()))?;
 
         let field = section
             .fields()
@@ -183,12 +234,12 @@ impl SecretManager {
                 f.label.as_deref().map(|s| s.to_ascii_lowercase())
                     == Some(field.to_ascii_lowercase())
             })
-            .ok_or_else(|| SecretsError::NotFound(name.into()))?;
+            .ok_or_else(|| SecretsErrorKind::NotFound(name.into()))?;
 
         field
             .value
             .clone()
-            .ok_or_else(|| SecretsError::NotFound(name.into()))
+            .ok_or_else(|| SecretsErrorKind::NotFound(name.into()))
     }
 }
 
@@ -200,16 +251,37 @@ impl From<Vault> for SecretManager {
 
 /// An error while processing a secret
 #[derive(Debug, thiserror::Error)]
-pub enum SecretsError {
+pub enum SecretsErrorKind {
     /// The secret could not be found
     #[error("Secret {0} not found")]
     NotFound(String),
 
     /// The secret URL was not valid for the format 1Password expected
     #[error("Invalid URL {0}")]
-    InvalidUrl(Url),
+    InvalidUrl(InvalidSecretUrl),
 
     /// There was an error from the 1Passwort Client
     #[error(transparent)]
     OnePassword(#[from] OnePasswordError),
+}
+
+/// An error returned while processing a secret.
+#[derive(Debug, thiserror::Error)]
+#[error("Secret '{url}' error: {kind}")]
+pub struct SecretsError {
+    #[source]
+    kind: SecretsErrorKind,
+    url: Url,
+}
+
+impl SecretsError {
+    /// Inner error type
+    pub fn kind(&self) -> &SecretsErrorKind {
+        &self.kind
+    }
+
+    /// URL of this secret
+    pub fn url(&self) -> &Url {
+        &self.url
+    }
 }
