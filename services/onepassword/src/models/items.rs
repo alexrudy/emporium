@@ -54,6 +54,11 @@ impl Item {
         Self { info, client }
     }
 
+    /// Access the inner API Client
+    pub fn api_client(&self) -> &Client {
+        &self.client
+    }
+
     /// Get the identifier for this item.
     pub fn id(&self) -> &ItemID {
         &self.info.id

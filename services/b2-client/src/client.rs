@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use api_client::{ApiClient, Authentication};
 use camino::Utf8Path;
 use dashmap::DashMap;
 use eyre::{eyre, Context};
@@ -100,6 +101,11 @@ impl B2Client {
             self.client.refresh_auth(auth);
         }
         Ok(())
+    }
+
+    /// Access the inner API Client
+    pub fn api_client(&self) -> &ApiClient<impl Authentication> {
+        &self.client
     }
 }
 

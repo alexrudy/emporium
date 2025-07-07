@@ -73,6 +73,11 @@ impl LinodeClient {
         }
     }
 
+    /// Access the inner API Client
+    pub fn api_client(&self) -> &ApiClient<BearerAuth> {
+        &self.inner
+    }
+
     async fn execute(&self, request: http::Request<Body>) -> Result<String> {
         let resp = self.inner.execute(request).await?;
         let status = resp.status();

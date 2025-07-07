@@ -59,6 +59,11 @@ impl TailscaleClient {
         }
     }
 
+    /// Access the inner API client.
+    pub fn api_client(&self) -> &ApiClient<TailscaleApiAuth> {
+        &self.inner
+    }
+
     fn tailnet_endpoint(&self, endpoint: &str) -> Utf8PathBuf {
         let mut path = Utf8PathBuf::from("tailnet/");
         path.push(self.tailnet.as_deref().unwrap_or("-"));

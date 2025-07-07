@@ -5,7 +5,10 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
+use api_client::timeout::{SharedDuration, SharedTimeoutLayer};
+use api_client::DEFAULT_TIMEOUT;
 use camino::Utf8Path;
 use dashmap::mapref::entry::Entry;
 use dashmap::DashMap;
@@ -60,6 +63,7 @@ impl B2MultiConfig {
 pub struct B2MultiClient {
     client: hyperdriver::client::SharedClientService<Body, Body>,
     buckets: Arc<DashMap<Box<str>, B2BucketStatus>>,
+    timeout: SharedDuration,
 }
 
 impl B2MultiClient {
@@ -69,15 +73,25 @@ impl B2MultiClient {
     /// the `Driver` trait, and can be used to access B2 across multiple keys. Authorization
     /// and re-authentication will be handled transparently.
     pub fn new(buckets: HashMap<Box<str>, B2ApplicationKey>) -> Self {
+        let timeout_layer = SharedTimeoutLayer::new(DEFAULT_TIMEOUT);
+        let timeout = timeout_layer.timeout().clone();
         B2MultiClient {
-            client: hyperdriver::Client::build_tcp_http().build_service(),
+            client: hyperdriver::Client::build_tcp_http()
+                .layer(timeout_layer)
+                .build_service(),
             buckets: Arc::new(
                 buckets
                     .into_iter()
                     .map(|(b, k)| (b, B2BucketStatus::Key(k)))
                     .collect(),
             ),
+            timeout,
         }
+    }
+
+    /// Set the client timeout.
+    pub fn set_timeout(&self, timeout: Duration) {
+        self.timeout.set(timeout);
     }
 
     /// Get a client for a given bucket.

@@ -282,6 +282,11 @@ impl GithubClient {
         self.client.auth().token.clone()
     }
 
+    /// Access the inner API Client
+    pub fn api_client(&self) -> &ApiClient<InstallationAccess> {
+        &self.client
+    }
+
     /// Set up git credentials for this installation with a token.
     pub async fn install_credentials(&self) -> Result<GithubCredentialsHelper, Error> {
         let path = format!("/etc/octocat/credentials/{}", self.id);

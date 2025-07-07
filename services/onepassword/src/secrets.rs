@@ -70,6 +70,13 @@ impl SecretManager {
         Ok(Self { client: vault })
     }
 
+    /// Access the inner API Client
+    pub fn api_client(
+        &self,
+    ) -> &api_client::ApiClient<crate::client::OnePasswordApiAuthentication> {
+        &self.client.api_client()
+    }
+
     /// Construct a 1Password Secrets Manager from environment variables
     pub async fn new_from_environmnet() -> Result<Self, OnePasswordError> {
         let host: http::Uri = read_env_var(HOST)?.parse().map_err(|_| {

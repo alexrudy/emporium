@@ -47,6 +47,11 @@ impl Vault {
         }
     }
 
+    /// Access the inner API Client
+    pub fn api_client(&self) -> &ApiClient<OnePasswordApiAuthentication> {
+        &self.client
+    }
+
     /// Get the name of the vault.
     pub fn name(&self) -> &str {
         &self.name

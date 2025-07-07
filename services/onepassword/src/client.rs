@@ -9,12 +9,12 @@ use api_client::{
 use crate::models::vaults::{Vault, VaultSummary};
 
 #[derive(Debug, Clone)]
-pub(crate) struct OnePasswordApiAuthentication {
+pub struct OnePasswordApiAuthentication {
     token: Secret,
 }
 
 impl OnePasswordApiAuthentication {
-    fn new(token: Secret) -> Self {
+    pub fn new(token: Secret) -> Self {
         Self { token }
     }
 }
@@ -94,6 +94,17 @@ impl OnePassword {
     /// Create a new 1Password client.
     pub fn new<S: Into<Secret>>(host: http::Uri, token: S) -> Self {
         let client = ApiClient::new(host, OnePasswordApiAuthentication::new(token.into()));
+        Self { client }
+    }
+
+    /// Access the inner API Client
+    pub fn api_client(&self) -> &ApiClient<OnePasswordApiAuthentication> {
+        &self.client
+    }
+}
+
+impl From<ApiClient<OnePasswordApiAuthentication>> for OnePassword {
+    fn from(client: ApiClient<OnePasswordApiAuthentication>) -> Self {
         Self { client }
     }
 }

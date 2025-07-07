@@ -3,7 +3,9 @@
 #![allow(clippy::arc_with_non_send_sync)]
 
 use std::future::Future;
+use std::ops::Deref;
 use std::sync::Arc;
+use std::time::Duration;
 
 use arc_swap::ArcSwap;
 use arc_swap::Guard;
@@ -22,6 +24,7 @@ mod paginate;
 pub mod request;
 pub mod response;
 mod retry;
+pub mod timeout;
 pub mod uri;
 
 pub use self::adapt::AdaptClientIncomingLayer;
@@ -34,6 +37,8 @@ pub use self::request::RequestBuilder;
 pub use self::request::RequestExt;
 use self::response::Response;
 pub use self::retry::{Attempts, Backoff};
+use self::timeout::SharedDuration;
+use self::timeout::SharedTimeoutLayer;
 use self::uri::UriExtension as _;
 
 /// A boxed service used for API requests in the Client
@@ -43,11 +48,15 @@ pub type ApiService =
 /// A boxed future used for API requests in the Client
 pub type BoxFuture<'a, T> = std::pin::Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
+/// The default API client timeout
+pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+
 #[derive(Debug)]
 struct InnerClient<A> {
     base: ArcSwap<Uri>,
     inner: hyperdriver::client::SharedClientService<Body, Body>,
     authentication: Arc<ArcSwap<A>>,
+    timeout: SharedDuration,
 }
 
 /// A client for accessing APIs over HTTP / HTTPS
@@ -65,8 +74,12 @@ where
     /// Create a new API Client from a base URL and an authentication method
     pub fn new(base: Uri, authentication: A) -> Self {
         let authentication = Arc::new(ArcSwap::new(Arc::new(authentication)));
+        let timeout_layer = SharedTimeoutLayer::new(DEFAULT_TIMEOUT);
+        let timeout = timeout_layer.timeout().clone();
+
         let inner = hyperdriver::Client::build_tcp_http()
             .with_default_tls()
+            .layer(timeout_layer)
             .layer(AuthenticationLayer::new(authentication.clone()))
             .build_service();
 
@@ -75,6 +88,7 @@ where
                 base: ArcSwap::new(Arc::new(base)),
                 inner: SharedService::new(inner),
                 authentication,
+                timeout,
             }),
         }
     }
@@ -94,9 +108,11 @@ where
         S::Future: Send + 'static,
     {
         let authentication = Arc::new(ArcSwap::new(Arc::new(authentication)));
-
+        let timeout_layer = SharedTimeoutLayer::new(DEFAULT_TIMEOUT);
+        let timeout = timeout_layer.timeout().clone();
         let service = tower::ServiceBuilder::new()
             .layer(SharedService::layer())
+            .layer(timeout_layer)
             .layer(AuthenticationLayer::new(authentication.clone()))
             .service(inner);
 
@@ -105,6 +121,7 @@ where
                 base: ArcSwap::new(Arc::new(base)),
                 inner: service,
                 authentication,
+                timeout,
             }),
         }
     }
@@ -112,6 +129,21 @@ where
     /// Set the base URL for the client
     pub fn set_base(&self, base: Uri) {
         self.inner.base.store(Arc::new(base));
+    }
+
+    /// Get a reference to the current base URI
+    pub fn get_base(&self) -> impl Deref<Target = Arc<Uri>> {
+        self.inner.base.load()
+    }
+
+    /// Get the current client timeout
+    pub fn get_timeout(&self) -> Duration {
+        self.inner.timeout.get()
+    }
+
+    /// Set the client timeout
+    pub fn set_timeout(&self, timeout: Duration) {
+        self.inner.timeout.set(timeout)
     }
 
     /// Replace the authentication method for the client
