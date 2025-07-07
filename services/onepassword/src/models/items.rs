@@ -208,8 +208,8 @@ pub struct SectionRef<'i> {
 }
 
 impl<'i> SectionRef<'i> {
-    /// Get the title of the section
-    pub fn title(&self) -> Option<&str> {
+    /// Get the user-facing label for the section
+    pub fn label(&self) -> Option<&str> {
         self.section.label.as_deref()
     }
 
