@@ -242,7 +242,8 @@ impl B2ApplicationKey {
     async fn client_inner(self) -> Result<B2Client, AuthenticationErrorKind> {
         let mut builder = hyperdriver::Client::build_tcp_http();
         let tcp = builder.transport();
-        tcp.connect_timeout = Some(crate::B2_DEFAULT_CONNECT_TIMEOUT);
+
+        tcp.config_mut().connect_timeout = Some(crate::B2_DEFAULT_CONNECT_TIMEOUT);
 
         let mut client = builder
             .with_timeout(crate::B2_DEFAULT_TIMEOUT)
