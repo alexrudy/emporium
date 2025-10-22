@@ -52,9 +52,7 @@ yacme = { version = "5.0.0-rc.2" }
 zeroize = "1"
 
 [workspace.dependencies.hyperdriver]
-# version = "0.12.0-rc1"
-git = "https://github.com/alexrudy/hyperdriver.git"
-branch = "refactor/chateau"
+version = "0.12.0-rc2"
 features = ["stream", "tls", "tls-ring", "server", "client", "incoming", "sni"]
 
 [workspace.dependencies.tokio]
