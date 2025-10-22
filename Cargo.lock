@@ -207,8 +207,7 @@ checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 [[package]]
 name = "chateau"
 version = "0.2.0-rc1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be61e0a703c373ccc2d10ffad44140823a9c93d360a8a9c0a9979c2ea0dc8d11"
+source = "git+https://github.com/alexrudy/chateau.git#521c1605e08aa4b510fc348a1c6e5042aa18f463"
 dependencies = [
  "futures",
  "parking_lot",
@@ -740,9 +739,8 @@ dependencies = [
 
 [[package]]
 name = "hyperdriver"
-version = "0.12.0-rc1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac075ecf0d9c14823ed191ce4d2bacd6652180ab28f61e5a8f36a0e6456d09a2"
+version = "0.12.0-rc2"
+source = "git+https://github.com/alexrudy/hyperdriver.git?branch=refactor%2Fchateau#4155f6e88a21c2447a9feff24c1fe55d92915e05"
 dependencies = [
  "bytes",
  "camino",
