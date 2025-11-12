@@ -4,7 +4,7 @@ use thiserror::Error;
 /// Generic error returned from a downstream
 /// implementation.
 #[derive(Debug, Error)]
-#[error("Storage error from {engine}")]
+#[error("Storage error from {engine}: {error:#}")]
 pub struct StorageError {
     engine: &'static str,
 
