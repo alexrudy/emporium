@@ -116,6 +116,8 @@ impl<'s> SecretReference<'s> {
             .transpose()
             .map_err(|_| InvalidSecretUrl::Utf8Error { field: "section" })?;
 
+        tracing::trace!(%vault, %item, section=%section.as_deref().unwrap_or("-"), %field, "Decoded op:// URL");
+
         Ok(Self {
             vault: vault.into(),
             item,
