@@ -10,12 +10,13 @@ members = [
     "storage-driver",
     "services/linode",
     "services/octocat",
-    "services/tailscale", "services/onepassword",
+    "services/tailscale", "services/onepassword", "services/registry",
 ]
 
 [workspace.dependencies]
 arc-swap = "1"
 async-trait = "0.1"
+axum = "0.7"
 base64 = "0.22"
 bytes = "1"
 camino = { version = "1", features = [] }
