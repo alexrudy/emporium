@@ -6,6 +6,7 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use bytes::Bytes;
+use uuid::Uuid;
 
 use crate::error::{RegistryError, RegistryResult};
 use crate::storage::RegistryStorage;
@@ -80,8 +81,8 @@ async fn start_blob_upload(Path(name): Path<String>) -> RegistryResult<Response>
     validate_repository(&name)?;
 
     // Generate a UUID for the upload session
-    let uuid = uuid::Uuid::new_v4().to_string();
-    let location = format!("/v2/{}/blobs/uploads/{}", name, uuid);
+    let session_id = Uuid::new_v4();
+    let location = format!("/v2/{}/blobs/uploads/{}", name, session_id);
 
     Ok((
         StatusCode::ACCEPTED,
@@ -153,27 +154,4 @@ fn validate_digest(digest: &str) -> RegistryResult<()> {
     }
 
     Ok(())
-}
-
-/// UUID type for blob uploads (simplified)
-mod uuid {
-    pub struct Uuid;
-
-    impl Uuid {
-        pub fn new_v4() -> Self {
-            Self
-        }
-
-        pub fn to_string(&self) -> String {
-            // Simple UUID generation using random hex
-            use sha2::{Digest, Sha256};
-            let random_data = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-                .to_string();
-            let hash = Sha256::digest(random_data.as_bytes());
-            format!("{:x}", hash)
-        }
-    }
 }
