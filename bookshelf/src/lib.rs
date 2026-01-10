@@ -146,11 +146,11 @@ impl Bookshelf {
             let components = path.components().collect::<Vec<_>>();
 
             let (name, suffix) = components.split_at(i);
-            let name = name.into_iter().collect::<Utf8PathBuf>();
+            let name = name.iter().collect::<Utf8PathBuf>();
 
             // The remainder is the suffix.
             let suffix: Utf8PathBuf = suffix
-                .into_iter()
+                .iter()
                 .skip_while(|c| !matches!(c, camino::Utf8Component::Normal(_)))
                 .collect();
 
