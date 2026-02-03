@@ -14,7 +14,7 @@ use dashmap::mapref::entry::Entry;
 use dashmap::DashMap;
 use eyre::Context;
 use hyperdriver::Body;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use storage_driver::StorageError;
 use storage_driver::{Driver, Metadata, Reader, Writer};
@@ -35,7 +35,7 @@ enum B2BucketStatus {
 }
 
 /// Configuration for a multi-client which uses a separate key per bucket.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct B2MultiConfig {
     /// Map of bucket names to application keys.
     #[serde(flatten)]

@@ -9,7 +9,7 @@ use camino::Utf8Path;
 use camino::Utf8PathBuf;
 #[cfg(feature = "b2")]
 use eyre::Context;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "local")]
 pub(crate) mod local;
@@ -36,7 +36,7 @@ pub use temp::TempDriver;
 pub use storage_driver::{Driver, Metadata, StorageError};
 
 /// Configuration for the storage backend, used to create a [`Storage`] instance.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum StorageConfig {
     /// In-memory storage backend.

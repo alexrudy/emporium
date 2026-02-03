@@ -76,7 +76,7 @@ impl From<B2Error> for AuthenticationErrorKind {
 }
 
 /// B2 Application Key, which consists of an ID and a secret key.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct B2ApplicationKey {
     key_id: Secret,
     key: Secret,
