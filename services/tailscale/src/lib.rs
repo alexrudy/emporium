@@ -5,12 +5,15 @@ use std::net::Ipv6Addr;
 use std::str::FromStr;
 
 use camino::Utf8PathBuf;
-use eyre::Context;
-use eyre::{eyre, Report, Result};
 
 mod client;
+mod error;
 
 pub use self::client::{TailscaleClient, TailscaleConfiguration};
+pub use self::error::TailscaleError;
+
+/// Result type using TailscaleError
+pub type Result<T> = std::result::Result<T, TailscaleError>;
 
 /// A tailscale host address with both V4 and V6 addresses
 #[derive(Debug)]
@@ -32,8 +35,9 @@ impl TailscaleAddress {
 }
 
 impl FromStr for TailscaleAddress {
-    type Err = Report;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    type Err = TailscaleError;
+
+    fn from_str(s: &str) -> Result<Self> {
         let mut v4 = None;
         let mut v6 = None;
 
@@ -48,8 +52,8 @@ impl FromStr for TailscaleAddress {
 
         match (v4, v6) {
             (Some(v4), Some(v6)) => Ok(TailscaleAddress { v4, v6 }),
-            (None, _) => Err(eyre!("Missing IPV4")),
-            (_, None) => Err(eyre!("Missing IPV6")),
+            (None, _) => Err(TailscaleError::parsing("IPv4 address", s)),
+            (_, None) => Err(TailscaleError::parsing("IPv6 address", s)),
         }
     }
 }
@@ -80,8 +84,12 @@ pub async fn get_host_tailscale_addresses() -> Result<TailscaleAddress> {
 
 /// Run a single command and return the output
 async fn run_command(command: &str, args: &[&str]) -> Result<String> {
-    let current_directory = Utf8PathBuf::from_path_buf(std::env::current_dir()?)
-        .map_err(|p| eyre!("Can't make current directory utf-8: {:?}", p))?;
+    let current_directory =
+        Utf8PathBuf::from_path_buf(std::env::current_dir().map_err(|e| {
+            TailscaleError::conversion_with_source("current directory to UTF-8", e)
+        })?)
+        .map_err(|p| TailscaleError::conversion(format!("path to UTF-8: {:?}", p)))?;
+
     let mut cmd = std::process::Command::new(command);
     cmd.current_dir(current_directory);
     cmd.args(args);
@@ -91,15 +99,20 @@ async fn run_command(command: &str, args: &[&str]) -> Result<String> {
     let stdout = tokio::task::spawn_blocking(move || {
         let output = cmd
             .output()
-            .wrap_err_with(|| format!("Failed to spawn {name}"))?;
+            .map_err(|e| TailscaleError::command_spawn(&name, e))?;
+
         if !output.status.success() {
-            return Err(eyre!("Failed to execute {name}: {output:?}"));
+            return Err(TailscaleError::command(&name, Some(output)));
         }
 
-        Ok(String::from_utf8(output.stdout).expect("Command {name} output is not utf-8"))
+        String::from_utf8(output.stdout).map_err(|e| {
+            TailscaleError::conversion_with_source(format!("command '{}' output to UTF-8", name), e)
+        })
     })
     .await
-    .wrap_err_with(|| format!("Command runner for {command} panic"))??;
+    .map_err(|e| {
+        TailscaleError::other_with_source(format!("Command '{}' task panicked", command), e)
+    })??;
 
     Ok(stdout)
 }
@@ -128,20 +141,20 @@ pub async fn get_host_ip_address(version: IpVersion) -> Result<IpAddr> {
     let item = stdout
         .split_ascii_whitespace()
         .nth(3)
-        .ok_or_else(|| eyre!("Wrong number of output fields"))?;
+        .ok_or_else(|| TailscaleError::parsing("IP address field", &stdout))?;
 
     let addr = match version {
         IpVersion::V4 => item
             .strip_suffix("/24")
             .unwrap_or(item)
             .parse::<Ipv4Addr>()
-            .with_context(|| format!("parsing {item} as IpV4"))?
+            .map_err(|e| TailscaleError::parsing_with_source("IPv4 address", item, e))?
             .into(),
         IpVersion::V6 => item
             .strip_suffix("/64")
             .unwrap_or(item)
             .parse::<Ipv6Addr>()
-            .with_context(|| format!("parsing {item} as IpV6"))?
+            .map_err(|e| TailscaleError::parsing_with_source("IPv6 address", item, e))?
             .into(),
     };
 
