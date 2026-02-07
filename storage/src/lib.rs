@@ -31,7 +31,7 @@ use storage_driver::DriverUri;
 pub use temp::TempDriver;
 
 #[doc(inline)]
-pub use storage_driver::{Driver, Metadata, StorageError};
+pub use storage_driver::{Driver, Metadata, StorageError, StorageErrorKind};
 
 /// Configuration for the storage backend, used to create a [`Storage`] instance.
 #[derive(Debug, Clone, Serialize, Deserialize)]
