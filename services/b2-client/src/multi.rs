@@ -12,7 +12,7 @@ use api_client::DEFAULT_TIMEOUT;
 use camino::Utf8Path;
 use dashmap::mapref::entry::Entry;
 use dashmap::DashMap;
-use eyre::Context;
+
 use hyperdriver::Body;
 use serde::{Deserialize, Serialize};
 
@@ -129,20 +129,12 @@ impl Driver for B2MultiClient {
     }
 
     async fn metadata(&self, bucket: &str, remote: &Utf8Path) -> Result<Metadata, StorageError> {
-        let client = self
-            .get_bucket_client(bucket)
-            .await
-            .context("authorize bucket key")
-            .map_err(StorageError::with(self::B2_STORAGE_NAME))?;
+        let client = self.get_bucket_client(bucket).await?;
         client.metadata(bucket, remote).await
     }
 
     async fn delete(&self, bucket: &str, remote: &Utf8Path) -> Result<(), StorageError> {
-        let client = self
-            .get_bucket_client(bucket)
-            .await
-            .context("authorize bucket key")
-            .map_err(StorageError::with(self::B2_STORAGE_NAME))?;
+        let client = self.get_bucket_client(bucket).await?;
         client.delete(bucket, remote).await
     }
 
@@ -152,11 +144,7 @@ impl Driver for B2MultiClient {
         remote: &Utf8Path,
         local: &mut Reader<'_>,
     ) -> Result<(), StorageError> {
-        let client = self
-            .get_bucket_client(bucket)
-            .await
-            .context("authorize bucket key")
-            .map_err(StorageError::with(self::B2_STORAGE_NAME))?;
+        let client = self.get_bucket_client(bucket).await?;
         client.upload(bucket, remote, local).await
     }
 
@@ -166,11 +154,7 @@ impl Driver for B2MultiClient {
         remote: &Utf8Path,
         local: &mut Writer<'_>,
     ) -> Result<(), StorageError> {
-        let client = self
-            .get_bucket_client(bucket)
-            .await
-            .context("authorize bucket key")
-            .map_err(StorageError::with(self::B2_STORAGE_NAME))?;
+        let client = self.get_bucket_client(bucket).await?;
         client.download(bucket, remote, local).await
     }
 
@@ -179,11 +163,7 @@ impl Driver for B2MultiClient {
         bucket: &str,
         prefix: Option<&Utf8Path>,
     ) -> Result<Vec<String>, StorageError> {
-        let client = self
-            .get_bucket_client(bucket)
-            .await
-            .context("authorize bucket key")
-            .map_err(StorageError::with(self::B2_STORAGE_NAME))?;
+        let client = self.get_bucket_client(bucket).await?;
         client.list(bucket, prefix).await
     }
 }

@@ -7,8 +7,6 @@ use std::sync::Arc;
 use camino::Utf8Path;
 #[cfg(feature = "local")]
 use camino::Utf8PathBuf;
-#[cfg(feature = "b2")]
-use eyre::Context;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "local")]
@@ -80,24 +78,25 @@ impl StorageConfig {
             StorageConfig::Local { path } => LocalDriver::new(path).into(),
             #[cfg(feature = "tmp")]
             StorageConfig::Temp => TempDriver::new()
-                .map_err(StorageError::with("Temp"))?
+                .map_err(|e| {
+                    use storage_driver::StorageErrorKind;
+                    StorageError::new("Temp", StorageErrorKind::Io, e)
+                })?
                 .into(),
             #[cfg(feature = "b2")]
-            StorageConfig::B2(app) => app
-                .client()
-                .await
-                .context("authenticating b2 client")
-                .map_err(StorageError::with("B2"))?
-                .into(),
+            StorageConfig::B2(app) => app.client().await?.into(),
             #[cfg(feature = "b2")]
-            StorageConfig::B2Env => b2_client::B2ApplicationKey::from_env()
-                .context("creating b2 client from env")
-                .map_err(StorageError::with("B2"))?
-                .client()
-                .await
-                .context("authenticating b2 client from env")
-                .map_err(StorageError::with("B2"))?
-                .into(),
+            StorageConfig::B2Env => {
+                let app = b2_client::B2ApplicationKey::from_env().map_err(|e| {
+                    use storage_driver::StorageErrorKind;
+                    StorageError::new(
+                        "B2",
+                        StorageErrorKind::PermissionDenied,
+                        std::io::Error::new(std::io::ErrorKind::PermissionDenied, e),
+                    )
+                })?;
+                app.client().await?.into()
+            }
             #[cfg(feature = "b2")]
             StorageConfig::B2Multi(config) => config.client().into(),
         };

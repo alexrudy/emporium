@@ -1,15 +1,23 @@
 #![allow(clippy::needless_pass_by_ref_mut)]
 
-use eyre::eyre;
-use eyre::WrapErr;
 use http::Uri;
 use std::{fmt, fs::DirEntry, ops::Deref, os::unix::prelude::MetadataExt, path::Path, sync::Arc};
 use tokio::io::{self, AsyncWriteExt};
 use tracing::Instrument;
 
-use crate::error::StorageError;
+use crate::error::{StorageError, StorageErrorKind};
 use camino::Utf8Path;
 use chrono::{DateTime, Utc};
+
+/// Helper to convert io::Error to StorageError with appropriate kind detection
+fn io_error_to_storage(engine: &'static str, err: io::Error) -> StorageError {
+    let kind = match err.kind() {
+        io::ErrorKind::NotFound => StorageErrorKind::NotFound,
+        io::ErrorKind::PermissionDenied => StorageErrorKind::PermissionDenied,
+        _ => StorageErrorKind::Io,
+    };
+    StorageError::new(engine, kind, err)
+}
 
 /// A reader stream for file contents.
 pub type Reader<'r> = dyn io::AsyncBufRead + Unpin + Send + Sync + 'r;
@@ -73,20 +81,17 @@ pub trait Driver: fmt::Debug {
         if let Some(parent) = local.parent() {
             tokio::fs::create_dir_all(parent)
                 .await
-                .wrap_err("create parents of local destination file")
-                .map_err(StorageError::with("tokio::fs"))?;
+                .map_err(|e| io_error_to_storage("tokio::fs", e))?;
         }
         let mut file = tokio::io::BufWriter::new(
             tokio::fs::File::create(local)
                 .await
-                .wrap_err("create local file for writing")
-                .map_err(StorageError::with("tokio::fs"))?,
+                .map_err(|e| io_error_to_storage("tokio::fs", e))?,
         );
         self.download(bucket, remote, &mut file).await?;
         file.shutdown()
             .await
-            .wrap_err("shutdown file buffer")
-            .map_err(StorageError::with("tokio::fs"))?;
+            .map_err(|e| io_error_to_storage("tokio::fs", e))?;
         Ok(())
     }
 
@@ -101,8 +106,7 @@ pub trait Driver: fmt::Debug {
         let mut file = tokio::io::BufReader::new(
             tokio::fs::File::open(local)
                 .await
-                .wrap_err("open local file for reading")
-                .map_err(StorageError::with("tokio::fs"))?,
+                .map_err(|e| io_error_to_storage("tokio::fs", e))?,
         );
 
         self.upload(bucket, remote, &mut file).await
@@ -129,20 +133,31 @@ pub trait Driver: fmt::Debug {
     /// Parse a Uri object to extract the bucket and remote path.
     fn parse_url<'u>(&self, url: &'u Uri) -> Result<(&'u str, &'u Utf8Path), StorageError> {
         if url.scheme_str() != Some(self.scheme()) {
+            let err = std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "Invalid scheme: expected {}, got {}",
+                    self.scheme(),
+                    url.scheme_str().unwrap_or_default()
+                ),
+            );
             return Err(StorageError::new(
                 self.name(),
-                eyre!(
-                    "Invalid scheme: expected {expected}, got {actual}",
-                    expected = self.scheme(),
-                    actual = url.scheme_str().unwrap_or_default()
-                ),
+                StorageErrorKind::InvalidRequest,
+                err,
             ));
         }
 
-        let bucket = url
-            .host()
-            .ok_or_else(|| eyre!("Missing host: invalid Uri {url}"))
-            .map_err(StorageError::with(self.name()))?;
+        let bucket = url.host().ok_or_else(|| {
+            StorageError::new(
+                self.name(),
+                StorageErrorKind::InvalidRequest,
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("Missing host: invalid Uri {url}"),
+                ),
+            )
+        })?;
         let remote = url.path().trim_start_matches('/').into();
 
         Ok((bucket, remote))
@@ -235,8 +250,7 @@ impl DriverUri<()> {
         let path = url.path();
         tokio::fs::remove_file(path)
             .await
-            .wrap_err("delete file")
-            .map_err(StorageError::with("tokio::fs"))?;
+            .map_err(|e| io_error_to_storage("tokio::fs", e))?;
         Ok(())
     }
 
@@ -246,14 +260,12 @@ impl DriverUri<()> {
         let path = url.path();
         let metadata = tokio::fs::metadata(path)
             .await
-            .wrap_err("get file metadata")
-            .map_err(StorageError::with("tokio::fs"))?;
+            .map_err(|e| io_error_to_storage("tokio::fs", e))?;
         Ok(Metadata {
             size: metadata.size(),
             created: metadata
                 .created()
-                .wrap_err("Created timestamp")
-                .map_err(StorageError::with("tokio::fs"))?
+                .map_err(|e| io_error_to_storage("tokio::fs", e))?
                 .into(),
         })
     }
@@ -264,12 +276,10 @@ impl DriverUri<()> {
         let path = url.path();
         let mut file = tokio::fs::File::create(path)
             .await
-            .wrap_err("create file")
-            .map_err(StorageError::with("tokio::fs"))?;
+            .map_err(|e| io_error_to_storage("tokio::fs", e))?;
         tokio::io::copy(reader, &mut file)
             .await
-            .wrap_err("write file")
-            .map_err(StorageError::with("tokio::fs"))?;
+            .map_err(|e| io_error_to_storage("tokio::fs", e))?;
         Ok(())
     }
 
@@ -279,12 +289,10 @@ impl DriverUri<()> {
         let path = url.path();
         let mut file = tokio::fs::File::open(path)
             .await
-            .wrap_err("open file")
-            .map_err(StorageError::with("tokio::fs"))?;
+            .map_err(|e| io_error_to_storage("tokio::fs", e))?;
         tokio::io::copy(&mut file, writer)
             .await
-            .wrap_err("read file")
-            .map_err(StorageError::with("tokio::fs"))?;
+            .map_err(|e| io_error_to_storage("tokio::fs", e))?;
         Ok(())
     }
 
@@ -294,16 +302,13 @@ impl DriverUri<()> {
         let path = url.path();
         let mut src = tokio::fs::File::open(path)
             .await
-            .wrap_err("open source file")
-            .map_err(StorageError::with("tokio::fs"))?;
+            .map_err(|e| io_error_to_storage("tokio::fs", e))?;
         let mut dst = tokio::fs::File::create(local)
             .await
-            .wrap_err("create destination file")
-            .map_err(StorageError::with("tokio::fs"))?;
+            .map_err(|e| io_error_to_storage("tokio::fs", e))?;
         tokio::io::copy(&mut src, &mut dst)
             .await
-            .wrap_err("copy file")
-            .map_err(StorageError::with("tokio::fs"))?;
+            .map_err(|e| io_error_to_storage("tokio::fs", e))?;
         Ok(())
     }
 
@@ -313,16 +318,13 @@ impl DriverUri<()> {
         let path = url.path();
         let mut src = tokio::fs::File::open(local)
             .await
-            .wrap_err("open source file")
-            .map_err(StorageError::with("tokio::fs"))?;
+            .map_err(|e| io_error_to_storage("tokio::fs", e))?;
         let mut dst = tokio::fs::File::create(path)
             .await
-            .wrap_err("create destination file")
-            .map_err(StorageError::with("tokio::fs"))?;
+            .map_err(|e| io_error_to_storage("tokio::fs", e))?;
         tokio::io::copy(&mut src, &mut dst)
             .await
-            .wrap_err("copy file")
-            .map_err(StorageError::with("tokio::fs"))?;
+            .map_err(|e| io_error_to_storage("tokio::fs", e))?;
         Ok(())
     }
 
@@ -352,15 +354,13 @@ impl DriverUri<()> {
                 Path::new(&path),
                 &mut (|entry| files.push(entry.path().to_string_lossy().to_string())),
             )
-            .wrap_err("walking directory")
-            .map_err(StorageError::with("tokio::fs"))?;
+            .map_err(|e| io_error_to_storage("tokio::fs", e))?;
 
             Ok::<_, StorageError>(files)
         })
         .in_current_span()
         .await
-        .wrap_err("task: walking directory")
-        .map_err(StorageError::with("tokio::fs"))??;
+        .map_err(|e| StorageError::new("tokio::fs", StorageErrorKind::Other, e))??;
         Ok(files)
     }
 }

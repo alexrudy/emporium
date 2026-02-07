@@ -8,11 +8,10 @@ license = "MIT"
 async-trait.workspace = true
 camino.workspace = true
 chrono.workspace = true
-eyre.workspace = true
 http.workspace = true
-thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+tracing-error.workspace = true
 
 [dev-dependencies]
 static_assertions.workspace = true

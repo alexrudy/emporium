@@ -5,9 +5,8 @@
 use std::collections::HashMap;
 
 use camino::Utf8Path;
-use eyre::eyre;
 use http::Uri;
-use storage_driver::{Driver, DriverUri, Metadata, StorageError};
+use storage_driver::{Driver, DriverUri, Metadata, StorageError, StorageErrorKind};
 use tokio::io;
 
 use crate::Storage;
@@ -35,7 +34,16 @@ macro_rules! forward_driver {
             }
             let driver = $this
                 .get($url)?
-                .ok_or_else(|| eyre!("Driver for {}:// not found", $url.scheme_str().unwrap_or_default())).map_err(|err| StorageError::new("multi driver", err))?;
+                .ok_or_else(|| {
+                    StorageError::new(
+                        "multi driver",
+                        StorageErrorKind::InvalidRequest,
+                        std::io::Error::new(
+                            std::io::ErrorKind::NotFound,
+                            format!("Driver for {}:// not found", $url.scheme_str().unwrap_or_default())
+                        )
+                    )
+                })?;
             tracing::trace!(method=%stringify!($method), driver=%driver.name(), "Using {} driver", driver.name());
 
             driver.uri().$method($url).await
@@ -50,7 +58,16 @@ macro_rules! forward_driver {
             }
             let driver = $this
                 .get($url)?
-                .ok_or_else(|| eyre!("Driver for {}:// not found", $url.scheme_str().unwrap_or_default())).map_err(|err| StorageError::new("multi driver", err))?;
+                .ok_or_else(|| {
+                    StorageError::new(
+                        "multi driver",
+                        StorageErrorKind::InvalidRequest,
+                        std::io::Error::new(
+                            std::io::ErrorKind::NotFound,
+                            format!("Driver for {}:// not found", $url.scheme_str().unwrap_or_default())
+                        )
+                    )
+                })?;
 
             driver.uri().$method($url,$($args),+).await
         }

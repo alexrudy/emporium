@@ -29,7 +29,7 @@ http = "1"
 http-body = "1"
 http-body-util = "*"
 hyper = "1"
-jaws = { version = "1.0.1", features = ["rand", "spki", "der"] }
+jaws = { version = "1.0.3", features = ["rand", "spki", "der"] }
 indoc = "2"
 mime = "0.3"
 parking_lot = "0.12"
@@ -48,13 +48,14 @@ tokio-util = "0.7"
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["set-header"] }
 tracing = "0.1"
+tracing-error = "0.2"
 uuid = { version = "1", features = ["v4"] }
 url = "2"
-yacme = { version = "5.0.0-rc.2" }
+yacme = { version = "5.0.1" }
 zeroize = "1"
 
 [workspace.dependencies.hyperdriver]
-version = "0.12.0-rc2"
+version = "0.12.3"
 features = ["stream", "tls", "tls-ring", "server", "client", "incoming", "sni"]
 
 [workspace.dependencies.tokio]

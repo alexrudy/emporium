@@ -1,11 +1,15 @@
-use std::fmt;
+use std::{fmt, sync::Arc};
 
 use api_client::response::{Response, ResponseBodyExt as _, ResponseExt as _};
 use http::StatusCode;
 use serde::{de::DeserializeOwned, Deserialize};
+use storage_driver::{StorageError, StorageErrorKind};
 use thiserror::Error;
 
-use crate::application::{AuthenticationError, AuthenticationErrorKind};
+use crate::{
+    application::{AuthenticationError, AuthenticationErrorKind},
+    B2_STORAGE_NAME,
+};
 
 /// An error deserialized from a response from the B2 API.
 #[derive(Debug, Clone, Error, Deserialize)]
@@ -151,6 +155,70 @@ impl B2RequestError {
             B2RequestError::B2(err) => Some(err),
             _ => None,
         }
+    }
+
+    /// Unwrap the error, and turn it into a generic Storage Error
+    pub(crate) fn unwrap_arc(self: Arc<Self>) -> StorageError {
+        match Arc::try_unwrap(self) {
+            Ok(inner) => inner.into(),
+            Err(arc) => {
+                let kind = match arc.as_ref() {
+                    B2RequestError::B2(b2_err) => match b2_err.kind() {
+                        B2ErrorCode::ExpiredAuthToken => StorageErrorKind::AuthExpired,
+                        B2ErrorCode::BadRequest => StorageErrorKind::InvalidRequest,
+                        B2ErrorCode::Other(_) => match b2_err.status_code() {
+                            StatusCode::NOT_FOUND => StorageErrorKind::NotFound,
+                            StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED => {
+                                StorageErrorKind::PermissionDenied
+                            }
+                            StatusCode::SERVICE_UNAVAILABLE => StorageErrorKind::ServiceUnavailable,
+                            _ => StorageErrorKind::Other,
+                        },
+                    },
+                    B2RequestError::Io(_) => StorageErrorKind::Io,
+                    B2RequestError::NoCredentials(_) => StorageErrorKind::PermissionDenied,
+                    B2RequestError::Serde(_, _) => StorageErrorKind::SerializationError,
+                    B2RequestError::RetriesExhausted => StorageErrorKind::RetriesExhausted,
+                    B2RequestError::Body(_) | B2RequestError::Client(_) => StorageErrorKind::Other,
+                };
+                StorageError::new(
+                    B2_STORAGE_NAME,
+                    kind,
+                    std::io::Error::other(arc.to_string()),
+                )
+            }
+        }
+    }
+}
+
+impl From<B2RequestError> for StorageError {
+    fn from(err: B2RequestError) -> Self {
+        let kind = match &err {
+            B2RequestError::B2(b2_err) => {
+                match b2_err.kind() {
+                    B2ErrorCode::ExpiredAuthToken => StorageErrorKind::AuthExpired,
+                    B2ErrorCode::BadRequest => StorageErrorKind::InvalidRequest,
+                    B2ErrorCode::Other(_) => {
+                        // Check status code for more specific errors
+                        match b2_err.status_code() {
+                            StatusCode::NOT_FOUND => StorageErrorKind::NotFound,
+                            StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED => {
+                                StorageErrorKind::PermissionDenied
+                            }
+                            StatusCode::SERVICE_UNAVAILABLE => StorageErrorKind::ServiceUnavailable,
+                            _ => StorageErrorKind::Other,
+                        }
+                    }
+                }
+            }
+            B2RequestError::Io(_) => StorageErrorKind::Io,
+            B2RequestError::NoCredentials(_) => StorageErrorKind::PermissionDenied,
+            B2RequestError::Serde(_, _) => StorageErrorKind::SerializationError,
+            B2RequestError::RetriesExhausted => StorageErrorKind::RetriesExhausted,
+            B2RequestError::Body(_) | B2RequestError::Client(_) => StorageErrorKind::Other,
+        };
+
+        StorageError::new(B2_STORAGE_NAME, kind, err)
     }
 }
 

@@ -1,9 +1,18 @@
 use camino::{Utf8Path, Utf8PathBuf};
-use eyre::Context;
 use tokio::io::AsyncWriteExt;
 use tracing::instrument;
 
-use storage_driver::{Driver, Metadata, Reader, StorageError, Writer};
+use storage_driver::{Driver, Metadata, Reader, StorageError, StorageErrorKind, Writer};
+
+/// Helper to convert io::Error to StorageError with appropriate kind detection
+fn io_error_to_storage(engine: &'static str, err: std::io::Error) -> StorageError {
+    let kind = match err.kind() {
+        std::io::ErrorKind::NotFound => StorageErrorKind::NotFound,
+        std::io::ErrorKind::PermissionDenied => StorageErrorKind::PermissionDenied,
+        _ => StorageErrorKind::Io,
+    };
+    StorageError::new(engine, kind, err)
+}
 
 /// A storage driver that stores files on the local filesystem.
 #[derive(Debug)]
@@ -37,26 +46,43 @@ impl Driver for LocalDriver {
 
     async fn metadata(&self, bucket: &str, remote: &Utf8Path) -> Result<Metadata, StorageError> {
         let remote = self.path(bucket, remote);
-        let metadata = tokio::fs::metadata(remote)
-            .await
-            .wrap_err("local driver: metadata")
-            .map_err(|err| StorageError::new(self.name(), err))?;
+        let metadata = tokio::fs::metadata(&remote).await.map_err(|err| {
+            StorageError::builder()
+                .kind(match err.kind() {
+                    std::io::ErrorKind::NotFound => StorageErrorKind::NotFound,
+                    std::io::ErrorKind::PermissionDenied => StorageErrorKind::PermissionDenied,
+                    _ => StorageErrorKind::Io,
+                })
+                .engine(self.name())
+                .bucket(bucket)
+                .path(remote.as_str())
+                .error(err)
+                .build()
+        })?;
         Ok(Metadata {
             size: metadata.len(),
             created: metadata
                 .created()
-                .wrap_err("metadata")
-                .map_err(|err| StorageError::new(self.name(), err))?
+                .map_err(|err| io_error_to_storage(self.name(), err))?
                 .into(),
         })
     }
 
     async fn delete(&self, bucket: &str, remote: &Utf8Path) -> Result<(), StorageError> {
         let remote = self.path(bucket, remote);
-        tokio::fs::remove_file(remote)
-            .await
-            .wrap_err("remove_file")
-            .map_err(|err| StorageError::new(self.name(), err))?;
+        tokio::fs::remove_file(&remote).await.map_err(|err| {
+            StorageError::builder()
+                .kind(match err.kind() {
+                    std::io::ErrorKind::NotFound => StorageErrorKind::NotFound,
+                    std::io::ErrorKind::PermissionDenied => StorageErrorKind::PermissionDenied,
+                    _ => StorageErrorKind::Io,
+                })
+                .engine(self.name())
+                .bucket(bucket)
+                .path(remote.as_str())
+                .error(err)
+                .build()
+        })?;
         Ok(())
     }
 
@@ -70,26 +96,22 @@ impl Driver for LocalDriver {
 
         tokio::fs::create_dir_all(&remote.parent().unwrap())
             .await
-            .context("create_dir_all")
-            .map_err(|err| StorageError::new(self.name(), err))?;
+            .map_err(|err| io_error_to_storage(self.name(), err))?;
 
         let mut writer = tokio::io::BufWriter::new(
             tokio::fs::File::create(&remote)
                 .await
-                .context("local: open remote file")
-                .map_err(|err| StorageError::new(self.name(), err))?,
+                .map_err(|err| io_error_to_storage(self.name(), err))?,
         );
 
         tokio::io::copy(local, &mut writer)
             .await
-            .context("copy")
-            .map_err(|err| StorageError::new(self.name(), err))?;
+            .map_err(|err| io_error_to_storage(self.name(), err))?;
 
         writer
             .shutdown()
             .await
-            .context("shutdown writer")
-            .map_err(|err| StorageError::new(self.name(), err))?;
+            .map_err(|err| io_error_to_storage(self.name(), err))?;
         Ok(())
     }
     async fn download(
@@ -100,23 +122,29 @@ impl Driver for LocalDriver {
     ) -> Result<(), StorageError> {
         let remote = self.path(bucket, remote);
 
-        let mut reader = tokio::io::BufReader::new(
-            tokio::fs::File::open(&remote)
-                .await
-                .context(" open remote file")
-                .map_err(|err| StorageError::new(self.name(), err))?,
-        );
+        let mut reader =
+            tokio::io::BufReader::new(tokio::fs::File::open(&remote).await.map_err(|err| {
+                StorageError::builder()
+                    .kind(match err.kind() {
+                        std::io::ErrorKind::NotFound => StorageErrorKind::NotFound,
+                        std::io::ErrorKind::PermissionDenied => StorageErrorKind::PermissionDenied,
+                        _ => StorageErrorKind::Io,
+                    })
+                    .engine(self.name())
+                    .bucket(bucket)
+                    .path(remote.as_str())
+                    .error(err)
+                    .build()
+            })?);
 
         tokio::io::copy(&mut reader, local)
             .await
-            .context("copy")
-            .map_err(|err| StorageError::new(self.name(), err))?;
+            .map_err(|err| io_error_to_storage(self.name(), err))?;
 
         local
             .flush()
             .await
-            .context("flush writer")
-            .map_err(|err| StorageError::new(self.name(), err))?;
+            .map_err(|err| io_error_to_storage(self.name(), err))?;
 
         Ok(())
     }
@@ -135,8 +163,7 @@ impl Driver for LocalDriver {
 
         tokio::fs::create_dir_all(path.parent().unwrap())
             .await
-            .context("create_dir_all")
-            .map_err(|err| StorageError::new(self.name(), err))?;
+            .map_err(|err| io_error_to_storage(self.name(), err))?;
 
         tracing::trace!(%path, "Searching directory tree");
 
@@ -144,9 +171,8 @@ impl Driver for LocalDriver {
 
         let items = tokio::task::spawn_blocking(move || span.in_scope(|| collect_list(&path)))
             .await
-            .wrap_err("local driver")
-            .map_err(|err| StorageError::new(self.name(), err))?
-            .map_err(|err| StorageError::new(self.name(), err))?;
+            .map_err(|err| StorageError::new(self.name(), StorageErrorKind::Other, err))?
+            .map_err(|err| io_error_to_storage(self.name(), err))?;
 
         if items.is_empty() {
             tracing::trace!("No remote entries found");
@@ -166,7 +192,7 @@ impl Driver for LocalDriver {
     }
 }
 
-fn collect_list(path: &Utf8Path) -> eyre::Result<Vec<Utf8PathBuf>> {
+fn collect_list(path: &Utf8Path) -> std::io::Result<Vec<Utf8PathBuf>> {
     let mut files = Vec::new();
 
     let target = path.parent().unwrap();
@@ -181,7 +207,7 @@ fn collect_list(path: &Utf8Path) -> eyre::Result<Vec<Utf8PathBuf>> {
         .collect())
 }
 
-fn visit(path: &Utf8Path, files: &mut Vec<Utf8PathBuf>) -> eyre::Result<()> {
+fn visit(path: &Utf8Path, files: &mut Vec<Utf8PathBuf>) -> std::io::Result<()> {
     tracing::trace!(%path, "Visiting {}", path);
     for entry in path.read_dir_utf8()? {
         let entry = entry?;

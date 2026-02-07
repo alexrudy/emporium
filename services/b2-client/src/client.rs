@@ -5,14 +5,14 @@ use std::sync::Arc;
 use api_client::{ApiClient, Authentication};
 use camino::Utf8Path;
 use dashmap::DashMap;
-use eyre::{eyre, Context};
+
 use futures::StreamExt;
 use hyperdriver::Body;
 use tokio::io;
 use tokio::io::AsyncWriteExt;
 
 use echocache::Cached;
-use storage_driver::{Driver, Metadata, Reader, StorageError, Writer};
+use storage_driver::{Driver, Metadata, Reader, StorageError, StorageErrorKind, Writer};
 
 use crate::application::B2ApplicationKey;
 use crate::application::{AuthenticationError, B2Authorization};
@@ -23,6 +23,16 @@ use super::B2_DEFAULT_CONCURRENCY;
 use super::B2_STORAGE_NAME;
 use super::B2_STORAGE_SCHEME;
 use super::B2_UPLOAD_RETRIES;
+
+/// Helper to convert io::Error to StorageError
+fn io_error_to_storage(err: std::io::Error) -> StorageError {
+    let kind = match err.kind() {
+        std::io::ErrorKind::NotFound => StorageErrorKind::NotFound,
+        std::io::ErrorKind::PermissionDenied => StorageErrorKind::PermissionDenied,
+        _ => StorageErrorKind::Io,
+    };
+    StorageError::new(B2_STORAGE_NAME, kind, err)
+}
 
 type BucketResult = Result<crate::bucket::Bucket, Arc<B2RequestError>>;
 type ArcLockMap<K, V> = Arc<DashMap<K, V>>;
@@ -137,23 +147,15 @@ impl B2Client {
         remote: &Utf8Path,
         local: &mut Writer<'_>,
     ) -> Result<(), StorageError> {
-        let stream = auth!(self.b2_download_file_by_name(bucket, remote))
-            .await
-            .context("open download stream")
-            .map_err(StorageError::with(B2_STORAGE_NAME))?;
+        let stream = auth!(self.b2_download_file_by_name(bucket, remote)).await?;
 
         let mut src =
             tokio_util::io::StreamReader::new(stream.map(|s| s.map_err(io::Error::other)));
         tokio::io::copy(&mut src, local)
             .await
-            .context("copy file to upload stream")
-            .map_err(StorageError::with(B2_STORAGE_NAME))?;
+            .map_err(io_error_to_storage)?;
 
-        local
-            .flush()
-            .await
-            .context("flush file stream")
-            .map_err(StorageError::with(B2_STORAGE_NAME))?;
+        local.flush().await.map_err(io_error_to_storage)?;
 
         Ok(())
     }
@@ -170,22 +172,23 @@ impl Driver for B2Client {
     }
 
     async fn metadata(&self, bucket: &str, remote: &Utf8Path) -> Result<Metadata, StorageError> {
-        let mut buckets = auth!(self.b2_list_buckets(String::from(bucket), None))
-            .await
-            .with_context(|| format!("list bucket {bucket}"))
-            .map_err(StorageError::with(B2_STORAGE_NAME))?;
+        let mut buckets = auth!(self.b2_list_buckets(String::from(bucket), None)).await?;
 
         assert_eq!(buckets.len(), 1);
         let bucket = buckets.pop().unwrap();
 
-        let mut infos = auth!(self.b2_list_file_names(bucket.id(), Some(remote.to_string()), None))
-            .await
-            .with_context(|| format!("list files in {}:{remote:?}", bucket.name()))
-            .map_err(StorageError::with(B2_STORAGE_NAME))?;
+        let mut infos =
+            auth!(self.b2_list_file_names(bucket.id(), Some(remote.to_string()), None)).await?;
 
         if infos.len() != 1 {
-            return Err(eyre!("{} files found with name {remote}", infos.len()))
-                .map_err(StorageError::with(B2_STORAGE_NAME));
+            return Err(StorageError::new(
+                B2_STORAGE_NAME,
+                StorageErrorKind::NotFound,
+                std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("{} files found with name {remote}", infos.len()),
+                ),
+            ));
         }
         let info = infos.pop().unwrap();
         Ok(info.into())
@@ -194,15 +197,11 @@ impl Driver for B2Client {
     async fn delete(&self, bucket: &str, remote: &Utf8Path) -> Result<(), StorageError> {
         let bucket_id = auth!(self.get_bucket(bucket))
             .await
-            .with_context(|| format!("get {bucket} id"))
-            .map_err(StorageError::with(B2_STORAGE_NAME))?
+            .map_err(B2RequestError::unwrap_arc)?
             .id()
             .clone();
 
-        self.delete_file(&bucket_id, remote)
-            .await
-            .with_context(|| format!("delete b2://{bucket}:{remote}"))
-            .map_err(StorageError::with(B2_STORAGE_NAME))?;
+        self.delete_file(&bucket_id, remote).await?;
         Ok(())
     }
 
@@ -214,15 +213,11 @@ impl Driver for B2Client {
     ) -> Result<(), StorageError> {
         let bucket_id = auth!(self.get_bucket(bucket))
             .await
-            .with_context(|| format!("get {bucket} id"))
-            .map_err(StorageError::with(B2_STORAGE_NAME))?
+            .map_err(B2RequestError::unwrap_arc)?
             .id()
             .clone();
 
-        auth!(self.upload_reader(bucket_id.clone(), local, remote, None))
-            .await
-            .with_context(|| format!("upload to b2://{bucket}:{remote}"))
-            .map_err(StorageError::with(B2_STORAGE_NAME))?;
+        auth!(self.upload_reader(bucket_id.clone(), local, remote, None)).await?;
         Ok(())
     }
 
@@ -234,15 +229,11 @@ impl Driver for B2Client {
     ) -> Result<(), StorageError> {
         let bucket_id = auth!(self.get_bucket(bucket))
             .await
-            .with_context(|| format!("get {bucket} id"))
-            .map_err(StorageError::with(B2_STORAGE_NAME))?
+            .map_err(B2RequestError::unwrap_arc)?
             .id()
             .clone();
 
-        auth!(self.upload_file_from_disk(bucket_id.clone(), local, remote, None))
-            .await
-            .with_context(|| format!("upload to b2://{bucket}:{remote}"))
-            .map_err(StorageError::with(B2_STORAGE_NAME))?;
+        auth!(self.upload_file_from_disk(bucket_id.clone(), local, remote, None)).await?;
         Ok(())
     }
 
@@ -252,10 +243,7 @@ impl Driver for B2Client {
         remote: &Utf8Path,
         local: &mut Writer<'_>,
     ) -> Result<(), StorageError> {
-        self.impl_download(bucket, remote, local)
-            .await
-            .with_context(|| format!("download from b2://{bucket}:{remote}"))
-            .map_err(StorageError::with(B2_STORAGE_NAME))?;
+        self.impl_download(bucket, remote, local).await?;
         Ok(())
     }
 
@@ -264,19 +252,14 @@ impl Driver for B2Client {
         bucket: &str,
         prefix: Option<&Utf8Path>,
     ) -> Result<Vec<String>, StorageError> {
-        let mut buckets = auth!(self.b2_list_buckets(String::from(bucket), None))
-            .await
-            .with_context(|| format!("list bucket {bucket}"))
-            .map_err(StorageError::with(B2_STORAGE_NAME))?;
+        let mut buckets = auth!(self.b2_list_buckets(String::from(bucket), None)).await?;
 
         assert_eq!(buckets.len(), 1);
         let bucket = buckets.pop().unwrap();
 
         let infos =
             auth!(self.b2_list_file_names(bucket.id(), prefix.map(|p| p.to_string()), None))
-                .await
-                .with_context(|| format!("list files in {}:{prefix:?}", bucket.name()))
-                .map_err(StorageError::with(B2_STORAGE_NAME))?;
+                .await?;
 
         Ok(infos.into_iter().map(|f| f.path().to_string()).collect())
     }

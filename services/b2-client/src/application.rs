@@ -9,6 +9,7 @@ use http::{Request, StatusCode, Uri};
 use hyperdriver::service::ServiceExt;
 use hyperdriver::Body;
 use serde::{Deserialize, Serialize};
+use storage_driver::StorageError;
 use thiserror::Error;
 
 use crate::errors::B2Error;
@@ -72,6 +73,23 @@ impl From<B2Error> for AuthenticationErrorKind {
             StatusCode::UNAUTHORIZED => AuthenticationErrorKind::Unauthorized(value),
             _ => panic!("Unexpected error status code: {value}"),
         }
+    }
+}
+
+impl From<AuthenticationError> for StorageError {
+    fn from(error: AuthenticationError) -> Self {
+        use storage_driver::StorageErrorKind;
+
+        let kind = match error.kind() {
+            AuthenticationErrorKind::Client(_) => StorageErrorKind::Other,
+            AuthenticationErrorKind::Deserialization(_, _) => StorageErrorKind::SerializationError,
+            AuthenticationErrorKind::Body(_) => StorageErrorKind::Other,
+            AuthenticationErrorKind::BadRequest(_) => StorageErrorKind::InvalidRequest,
+            AuthenticationErrorKind::Unauthorized(_) => StorageErrorKind::PermissionDenied,
+            AuthenticationErrorKind::UnauthorizedBucket(_) => StorageErrorKind::PermissionDenied,
+        };
+
+        StorageError::new("b2", kind, error)
     }
 }
 

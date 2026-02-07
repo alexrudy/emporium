@@ -11,4 +11,4 @@ pub use driver::DriverUri;
 pub use driver::Metadata;
 pub use driver::Reader;
 pub use driver::Writer;
-pub use error::StorageError;
+pub use error::{StorageError, StorageErrorKind};

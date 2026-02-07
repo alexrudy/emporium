@@ -13,7 +13,6 @@ camino = { workspace = true, features = ["serde1"] }
 chrono.workspace = true
 dashmap.workspace = true
 echocache = { path = "../../echocache" }
-eyre.workspace = true
 futures.workspace = true
 hex.workspace = true
 http.workspace = true

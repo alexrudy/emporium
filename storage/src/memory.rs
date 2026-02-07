@@ -2,10 +2,19 @@ use std::collections::HashMap;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use chrono::{DateTime, Utc};
-use eyre::{eyre, Context};
 use tokio::{io::AsyncWriteExt, sync::RwLock};
 
-use storage_driver::{Driver, Metadata, Reader, StorageError, Writer};
+use storage_driver::{Driver, Metadata, Reader, StorageError, StorageErrorKind, Writer};
+
+/// Helper to convert io::Error to StorageError with appropriate kind detection
+fn io_error_to_storage(engine: &'static str, err: std::io::Error) -> StorageError {
+    let kind = match err.kind() {
+        std::io::ErrorKind::NotFound => StorageErrorKind::NotFound,
+        std::io::ErrorKind::PermissionDenied => StorageErrorKind::PermissionDenied,
+        _ => StorageErrorKind::Io,
+    };
+    StorageError::new(engine, kind, err)
+}
 
 #[derive(Debug)]
 struct MemoryFileItem {
@@ -80,24 +89,51 @@ impl Driver for MemoryStorage {
 
     async fn metadata(&self, bucket: &str, remote: &Utf8Path) -> Result<Metadata, StorageError> {
         let buckets = self.buckets.read().await;
-        let bucket = buckets
-            .get(bucket)
-            .ok_or(eyre!("Bucket Not found: {bucket}"))
-            .map_err(|err| StorageError::new(self.name(), err))?;
-        Ok(bucket
+        let bucket_map = buckets.get(bucket).ok_or_else(|| {
+            StorageError::builder()
+                .kind(StorageErrorKind::NotFound)
+                .engine(self.name())
+                .bucket(bucket)
+                .context("bucket not found")
+                .error(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("Bucket not found: {bucket}"),
+                ))
+                .build()
+        })?;
+        Ok(bucket_map
             .get(remote)
-            .ok_or(eyre!("Path Not found: {remote}"))
-            .map_err(|err| StorageError::new(self.name(), err))?
+            .ok_or_else(|| {
+                StorageError::builder()
+                    .kind(StorageErrorKind::NotFound)
+                    .engine(self.name())
+                    .bucket(bucket)
+                    .path(remote.as_str())
+                    .context("path not found")
+                    .error(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        format!("Path not found: {remote}"),
+                    ))
+                    .build()
+            })?
             .into())
     }
 
     async fn delete(&self, bucket: &str, remote: &Utf8Path) -> Result<(), StorageError> {
         let mut buckets = self.buckets.write().await;
-        let bucket = buckets
-            .get_mut(bucket)
-            .ok_or(eyre!("Bucket Not found: {bucket}"))
-            .map_err(|err| StorageError::new(self.name(), err))?;
-        bucket.remove(remote);
+        let bucket_map = buckets.get_mut(bucket).ok_or_else(|| {
+            StorageError::builder()
+                .kind(StorageErrorKind::NotFound)
+                .engine(self.name())
+                .bucket(bucket)
+                .context("bucket not found")
+                .error(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("Bucket not found: {bucket}"),
+                ))
+                .build()
+        })?;
+        bucket_map.remove(remote);
 
         Ok(())
     }
@@ -112,17 +148,15 @@ impl Driver for MemoryStorage {
 
         tokio::io::copy(local, &mut buf)
             .await
-            .context("copy")
-            .map_err(|err| StorageError::new(self.name(), err))?;
+            .map_err(|err| io_error_to_storage(self.name(), err))?;
 
         buf.shutdown()
             .await
-            .context("shutdown writer")
-            .map_err(|err| StorageError::new(self.name(), err))?;
+            .map_err(|err| io_error_to_storage(self.name(), err))?;
 
         let mut buckets = self.buckets.write().await;
-        let bucket = buckets.entry(bucket.to_string()).or_default();
-        bucket.insert(remote.to_owned(), buf.into());
+        let bucket_map = buckets.entry(bucket.to_string()).or_default();
+        bucket_map.insert(remote.to_owned(), buf.into());
 
         Ok(())
     }
@@ -134,26 +168,43 @@ impl Driver for MemoryStorage {
         local: &mut Writer<'_>,
     ) -> Result<(), StorageError> {
         let buckets = self.buckets.read().await;
-        let bucket = buckets
-            .get(bucket)
-            .ok_or(eyre!("Bucket Not found: {bucket}"))
-            .map_err(|err| StorageError::new(self.name(), err))?;
-        let mut buf = bucket
+        let bucket_map = buckets.get(bucket).ok_or_else(|| {
+            StorageError::builder()
+                .kind(StorageErrorKind::NotFound)
+                .engine(self.name())
+                .bucket(bucket)
+                .context("bucket not found")
+                .error(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("Bucket not found: {bucket}"),
+                ))
+                .build()
+        })?;
+        let mut buf = bucket_map
             .get(remote)
-            .ok_or(eyre!("Path Not found: {remote}"))
-            .map_err(|err| StorageError::new(self.name(), err))?
+            .ok_or_else(|| {
+                StorageError::builder()
+                    .kind(StorageErrorKind::NotFound)
+                    .engine(self.name())
+                    .bucket(bucket)
+                    .path(remote.as_str())
+                    .context("path not found")
+                    .error(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        format!("Path not found: {remote}"),
+                    ))
+                    .build()
+            })?
             .as_ref();
 
         tokio::io::copy(&mut buf, local)
             .await
-            .context("copy")
-            .map_err(|err| StorageError::new(self.name(), err))?;
+            .map_err(|err| io_error_to_storage(self.name(), err))?;
 
         local
             .flush()
             .await
-            .context("flush")
-            .map_err(|err| StorageError::new(self.name(), err))?;
+            .map_err(|err| io_error_to_storage(self.name(), err))?;
 
         Ok(())
     }
@@ -166,13 +217,21 @@ impl Driver for MemoryStorage {
         tracing::trace!(%bucket, ?prefix, "list memory bucket");
 
         let buckets = self.buckets.read().await;
-        let bucket = buckets
-            .get(bucket)
-            .ok_or(eyre!("Bucket Not found: {bucket}"))
-            .map_err(|err| StorageError::new(self.name(), err))?;
+        let bucket_map = buckets.get(bucket).ok_or_else(|| {
+            StorageError::builder()
+                .kind(StorageErrorKind::NotFound)
+                .engine(self.name())
+                .bucket(bucket)
+                .context("bucket not found")
+                .error(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("Bucket not found: {bucket}"),
+                ))
+                .build()
+        })?;
 
         let mut paths = Vec::new();
-        for path in bucket.keys() {
+        for path in bucket_map.keys() {
             if let Some(prefix) = prefix {
                 if path.starts_with(prefix) {
                     paths.push(path.to_string());
