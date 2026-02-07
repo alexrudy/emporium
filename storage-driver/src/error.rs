@@ -161,12 +161,9 @@ impl ErrorTrace {
 ///     let result = std::fs::File::open("missing.txt");
 ///
 ///     match result {
-///         Err(err) => Err(StorageError::builder()
-///             .kind(StorageErrorKind::NotFound)
-///             .engine("local")
+///         Err(err) => Err(StorageError::builder("local", StorageErrorKind::NotFound, err)
 ///             .bucket("my-bucket")
 ///             .path("path/to/missing.txt")
-///             .error(err)
 ///             .build()),
 ///         Ok(_) => Ok(()),
 ///     }
@@ -222,8 +219,37 @@ impl StorageError {
     }
 
     /// Create a builder for constructing a storage error with full context.
-    pub fn builder() -> StorageErrorBuilder {
-        StorageErrorBuilder::default()
+    ///
+    /// The builder requires the three essential pieces of information upfront:
+    /// - `engine`: The storage engine name
+    /// - `kind`: The error kind
+    /// - `error`: The underlying error
+    ///
+    /// Additional optional context (bucket, path, context) can be added via builder methods.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use storage_driver::{StorageError, StorageErrorKind};
+    ///
+    /// let error = StorageError::builder("s3", StorageErrorKind::NotFound,
+    ///     std::io::Error::new(std::io::ErrorKind::NotFound, "file not found"))
+    ///     .bucket("my-bucket")
+    ///     .path("path/to/file.txt")
+    ///     .build();
+    /// ```
+    pub fn builder<E>(engine: &'static str, kind: StorageErrorKind, error: E) -> StorageErrorBuilder
+    where
+        E: Into<Box<dyn StdError + Send + Sync + 'static>>,
+    {
+        StorageErrorBuilder {
+            engine,
+            kind,
+            source: error.into(),
+            bucket: None,
+            path: None,
+            context: None,
+        }
     }
 
     /// Returns a boxed closure that creates a storage error from a downstream error.
@@ -325,45 +351,37 @@ impl fmt::Display for StorageError {
     }
 }
 
-/// Builder for constructing `StorageError` with full context.
+/// Builder for constructing `StorageError` with optional context fields.
+///
+/// The builder is created with all required fields already provided via
+/// `StorageError::builder()`, and this builder allows adding optional context.
 ///
 /// # Example
 ///
 /// ```rust
 /// use storage_driver::{StorageError, StorageErrorKind};
 ///
-/// let error = StorageError::builder()
-///     .kind(StorageErrorKind::NotFound)
-///     .engine("s3")
+/// let error = StorageError::builder(
+///     "s3",
+///     StorageErrorKind::NotFound,
+///     std::io::Error::new(std::io::ErrorKind::NotFound, "file not found")
+/// )
 ///     .bucket("my-bucket")
 ///     .path("path/to/file.txt")
 ///     .context("download operation")
-///     .error(std::io::Error::new(std::io::ErrorKind::NotFound, "file not found"))
 ///     .build();
 /// ```
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub struct StorageErrorBuilder {
-    kind: Option<StorageErrorKind>,
-    engine: Option<&'static str>,
+    kind: StorageErrorKind,
+    engine: &'static str,
+    source: Box<dyn StdError + Send + Sync + 'static>,
     bucket: Option<String>,
     path: Option<String>,
     context: Option<String>,
-    source: Option<Box<dyn StdError + Send + Sync + 'static>>,
 }
 
 impl StorageErrorBuilder {
-    /// Set the error kind (required).
-    pub fn kind(mut self, kind: StorageErrorKind) -> Self {
-        self.kind = Some(kind);
-        self
-    }
-
-    /// Set the storage engine name (required).
-    pub fn engine(mut self, engine: &'static str) -> Self {
-        self.engine = Some(engine);
-        self
-    }
-
     /// Set the bucket name.
     pub fn bucket(mut self, bucket: impl Into<String>) -> Self {
         self.bucket = Some(bucket.into());
@@ -382,28 +400,17 @@ impl StorageErrorBuilder {
         self
     }
 
-    /// Set the underlying error (required).
-    pub fn error<E>(mut self, error: E) -> Self
-    where
-        E: Into<Box<dyn StdError + Send + Sync + 'static>>,
-    {
-        self.source = Some(error.into());
-        self
-    }
-
     /// Build the `StorageError`.
     ///
-    /// # Panics
-    ///
-    /// Panics if `kind`, `engine`, or `error` were not set.
+    /// This never panics as all required fields are guaranteed to be present.
     pub fn build(self) -> StorageError {
         StorageError {
-            kind: self.kind.expect("StorageErrorKind must be set"),
-            engine: self.engine.expect("engine must be set"),
+            kind: self.kind,
+            engine: self.engine,
             bucket: self.bucket,
             path: self.path,
             context: self.context,
-            source: self.source.expect("error must be set"),
+            source: self.source,
             traces: Box::new(ErrorTrace::capture()),
         }
     }

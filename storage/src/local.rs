@@ -47,16 +47,14 @@ impl Driver for LocalDriver {
     async fn metadata(&self, bucket: &str, remote: &Utf8Path) -> Result<Metadata, StorageError> {
         let remote = self.path(bucket, remote);
         let metadata = tokio::fs::metadata(&remote).await.map_err(|err| {
-            StorageError::builder()
-                .kind(match err.kind() {
-                    std::io::ErrorKind::NotFound => StorageErrorKind::NotFound,
-                    std::io::ErrorKind::PermissionDenied => StorageErrorKind::PermissionDenied,
-                    _ => StorageErrorKind::Io,
-                })
-                .engine(self.name())
+            let kind = match err.kind() {
+                std::io::ErrorKind::NotFound => StorageErrorKind::NotFound,
+                std::io::ErrorKind::PermissionDenied => StorageErrorKind::PermissionDenied,
+                _ => StorageErrorKind::Io,
+            };
+            StorageError::builder(self.name(), kind, err)
                 .bucket(bucket)
                 .path(remote.as_str())
-                .error(err)
                 .build()
         })?;
         Ok(Metadata {
@@ -71,16 +69,14 @@ impl Driver for LocalDriver {
     async fn delete(&self, bucket: &str, remote: &Utf8Path) -> Result<(), StorageError> {
         let remote = self.path(bucket, remote);
         tokio::fs::remove_file(&remote).await.map_err(|err| {
-            StorageError::builder()
-                .kind(match err.kind() {
-                    std::io::ErrorKind::NotFound => StorageErrorKind::NotFound,
-                    std::io::ErrorKind::PermissionDenied => StorageErrorKind::PermissionDenied,
-                    _ => StorageErrorKind::Io,
-                })
-                .engine(self.name())
+            let kind = match err.kind() {
+                std::io::ErrorKind::NotFound => StorageErrorKind::NotFound,
+                std::io::ErrorKind::PermissionDenied => StorageErrorKind::PermissionDenied,
+                _ => StorageErrorKind::Io,
+            };
+            StorageError::builder(self.name(), kind, err)
                 .bucket(bucket)
                 .path(remote.as_str())
-                .error(err)
                 .build()
         })?;
         Ok(())
@@ -124,16 +120,14 @@ impl Driver for LocalDriver {
 
         let mut reader =
             tokio::io::BufReader::new(tokio::fs::File::open(&remote).await.map_err(|err| {
-                StorageError::builder()
-                    .kind(match err.kind() {
-                        std::io::ErrorKind::NotFound => StorageErrorKind::NotFound,
-                        std::io::ErrorKind::PermissionDenied => StorageErrorKind::PermissionDenied,
-                        _ => StorageErrorKind::Io,
-                    })
-                    .engine(self.name())
+                let kind = match err.kind() {
+                    std::io::ErrorKind::NotFound => StorageErrorKind::NotFound,
+                    std::io::ErrorKind::PermissionDenied => StorageErrorKind::PermissionDenied,
+                    _ => StorageErrorKind::Io,
+                };
+                StorageError::builder(self.name(), kind, err)
                     .bucket(bucket)
                     .path(remote.as_str())
-                    .error(err)
                     .build()
             })?);
 

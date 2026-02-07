@@ -90,31 +90,33 @@ impl Driver for MemoryStorage {
     async fn metadata(&self, bucket: &str, remote: &Utf8Path) -> Result<Metadata, StorageError> {
         let buckets = self.buckets.read().await;
         let bucket_map = buckets.get(bucket).ok_or_else(|| {
-            StorageError::builder()
-                .kind(StorageErrorKind::NotFound)
-                .engine(self.name())
-                .bucket(bucket)
-                .context("bucket not found")
-                .error(std::io::Error::new(
+            StorageError::builder(
+                self.name(),
+                StorageErrorKind::NotFound,
+                std::io::Error::new(
                     std::io::ErrorKind::NotFound,
                     format!("Bucket not found: {bucket}"),
-                ))
-                .build()
+                ),
+            )
+            .bucket(bucket)
+            .context("bucket not found")
+            .build()
         })?;
         Ok(bucket_map
             .get(remote)
             .ok_or_else(|| {
-                StorageError::builder()
-                    .kind(StorageErrorKind::NotFound)
-                    .engine(self.name())
-                    .bucket(bucket)
-                    .path(remote.as_str())
-                    .context("path not found")
-                    .error(std::io::Error::new(
+                StorageError::builder(
+                    self.name(),
+                    StorageErrorKind::NotFound,
+                    std::io::Error::new(
                         std::io::ErrorKind::NotFound,
                         format!("Path not found: {remote}"),
-                    ))
-                    .build()
+                    ),
+                )
+                .bucket(bucket)
+                .path(remote.as_str())
+                .context("path not found")
+                .build()
             })?
             .into())
     }
@@ -122,16 +124,17 @@ impl Driver for MemoryStorage {
     async fn delete(&self, bucket: &str, remote: &Utf8Path) -> Result<(), StorageError> {
         let mut buckets = self.buckets.write().await;
         let bucket_map = buckets.get_mut(bucket).ok_or_else(|| {
-            StorageError::builder()
-                .kind(StorageErrorKind::NotFound)
-                .engine(self.name())
-                .bucket(bucket)
-                .context("bucket not found")
-                .error(std::io::Error::new(
+            StorageError::builder(
+                self.name(),
+                StorageErrorKind::NotFound,
+                std::io::Error::new(
                     std::io::ErrorKind::NotFound,
                     format!("Bucket not found: {bucket}"),
-                ))
-                .build()
+                ),
+            )
+            .bucket(bucket)
+            .context("bucket not found")
+            .build()
         })?;
         bucket_map.remove(remote);
 
@@ -169,31 +172,33 @@ impl Driver for MemoryStorage {
     ) -> Result<(), StorageError> {
         let buckets = self.buckets.read().await;
         let bucket_map = buckets.get(bucket).ok_or_else(|| {
-            StorageError::builder()
-                .kind(StorageErrorKind::NotFound)
-                .engine(self.name())
-                .bucket(bucket)
-                .context("bucket not found")
-                .error(std::io::Error::new(
+            StorageError::builder(
+                self.name(),
+                StorageErrorKind::NotFound,
+                std::io::Error::new(
                     std::io::ErrorKind::NotFound,
                     format!("Bucket not found: {bucket}"),
-                ))
-                .build()
+                ),
+            )
+            .bucket(bucket)
+            .context("bucket not found")
+            .build()
         })?;
         let mut buf = bucket_map
             .get(remote)
             .ok_or_else(|| {
-                StorageError::builder()
-                    .kind(StorageErrorKind::NotFound)
-                    .engine(self.name())
-                    .bucket(bucket)
-                    .path(remote.as_str())
-                    .context("path not found")
-                    .error(std::io::Error::new(
+                StorageError::builder(
+                    self.name(),
+                    StorageErrorKind::NotFound,
+                    std::io::Error::new(
                         std::io::ErrorKind::NotFound,
                         format!("Path not found: {remote}"),
-                    ))
-                    .build()
+                    ),
+                )
+                .bucket(bucket)
+                .path(remote.as_str())
+                .context("path not found")
+                .build()
             })?
             .as_ref();
 
@@ -218,16 +223,17 @@ impl Driver for MemoryStorage {
 
         let buckets = self.buckets.read().await;
         let bucket_map = buckets.get(bucket).ok_or_else(|| {
-            StorageError::builder()
-                .kind(StorageErrorKind::NotFound)
-                .engine(self.name())
-                .bucket(bucket)
-                .context("bucket not found")
-                .error(std::io::Error::new(
+            StorageError::builder(
+                self.name(),
+                StorageErrorKind::NotFound,
+                std::io::Error::new(
                     std::io::ErrorKind::NotFound,
                     format!("Bucket not found: {bucket}"),
-                ))
-                .build()
+                ),
+            )
+            .bucket(bucket)
+            .context("bucket not found")
+            .build()
         })?;
 
         let mut paths = Vec::new();
