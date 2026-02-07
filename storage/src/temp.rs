@@ -1,5 +1,6 @@
+use std::io;
+
 use camino::Utf8Path;
-use eyre::WrapErr;
 use tempfile::TempDir;
 
 use crate::local::LocalDriver;
@@ -21,8 +22,8 @@ impl Default for TempDriver {
 
 impl TempDriver {
     /// Create a new `TempDriver` instance, storing files in a temporary directory.
-    pub fn new() -> eyre::Result<Self> {
-        let tmp = TempDir::new().wrap_err("create temporary directory")?;
+    pub fn new() -> io::Result<Self> {
+        let tmp = TempDir::new()?;
         let root = Utf8Path::from_path(tmp.path())
             .expect("utf-8 path")
             .to_owned();

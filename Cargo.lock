@@ -1986,7 +1986,6 @@ dependencies = [
  "b2-client",
  "camino",
  "chrono",
- "eyre",
  "http",
  "serde",
  "storage-driver",

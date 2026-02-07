@@ -9,7 +9,6 @@ async-trait.workspace = true
 b2-client = { path = "../services/b2-client", optional = true }
 camino = { workspace = true, features = ["serde1"] }
 chrono.workspace = true
-eyre.workspace = true
 http.workspace = true
 serde.workspace = true
 storage-driver.path = "../storage-driver"
