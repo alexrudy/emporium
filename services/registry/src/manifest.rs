@@ -15,13 +15,13 @@ use crate::storage::RegistryStorage;
 pub fn router() -> Router<RegistryStorage> {
     Router::new()
         .route(
-            "/v2/:name/manifests/:reference",
+            "/v2/{name}/manifests/{reference}",
             get(get_manifest)
                 .head(head_manifest)
                 .put(put_manifest)
                 .delete(delete_manifest),
         )
-        .route("/v2/:name/tags/list", get(list_tags))
+        .route("/v2/{name}/tags/list", get(list_tags))
 }
 
 /// Get a manifest

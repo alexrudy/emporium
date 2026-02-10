@@ -17,12 +17,12 @@ pub fn router() -> Router<RegistryStorage> {
 
     Router::new()
         .route(
-            "/v2/:name/blobs/:digest",
+            "/v2/{name}/blobs/{digest}",
             get(get_blob).head(head_blob).delete(delete_blob),
         )
-        .route("/v2/:name/blobs/uploads/", post(start_blob_upload))
+        .route("/v2/{name}/blobs/uploads/", post(start_blob_upload))
         .route(
-            "/v2/:name/blobs/uploads/:uuid",
+            "/v2/{name}/blobs/uploads/{uuid}",
             put(complete_blob_upload).delete(cancel_blob_upload),
         )
 }
