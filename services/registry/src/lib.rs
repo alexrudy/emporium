@@ -35,5 +35,6 @@ mod error;
 mod manifest;
 mod storage;
 
+pub use ::axum::Router;
 pub use api::RegistryBuilder;
 pub use error::{RegistryError, RegistryResult};
