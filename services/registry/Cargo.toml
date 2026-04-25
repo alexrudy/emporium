@@ -4,10 +4,16 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT"
 
+[[bin]]
+name = "registry-server"
+path = "src/main.rs"
+required-features = ["cli"]
+
 [dependencies]
 axum.workspace = true
 bytes.workspace = true
 camino.workspace = true
+clap = { version = "4.6.1", features = ["derive"], optional = true }
 hex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -15,9 +21,14 @@ sha2.workspace = true
 storage = { path = "../../storage" }
 thiserror.workspace = true
 tokio = { workspace = true, features = ["io-util"] }
+toml_edit = { version = "0.25.11", features = ["serde"], optional = true }
 tower.workspace = true
 tracing.workspace = true
+tracing-subscriber = { workspace = true, optional = true }
 uuid = { workspace = true, features = ["v4"] }
+
+[features]
+cli = ["tokio/macros", "tokio/rt-multi-thread", "dep:clap", "dep:toml_edit"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
