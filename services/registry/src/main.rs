@@ -13,6 +13,7 @@ use storage::StorageConfig;
 #[derive(Debug, Parser)]
 struct Args {
     /// Path to the configuration TOML file.
+    #[clap(long, alias = "config")]
     configuration: PathBuf,
 
     /// Name of the storage bucket.
@@ -31,7 +32,6 @@ struct Args {
 #[derive(Debug, Deserialize)]
 struct Configuration {
     storage: StorageConfig,
-
     bucket: Option<String>,
 }
 
