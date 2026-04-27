@@ -25,7 +25,7 @@ use thiserror::Error;
 pub mod config;
 pub mod models;
 
-pub use crate::config::GithubAppConfig;
+pub use crate::config::{GithubAppConfig, GithubAppKey};
 
 const CLOCK_DRIFT_OFFSET_SECONDS: i64 = 60;
 const TOKEN_DURATION_SECONDS: i64 = 5 * 60;
@@ -350,7 +350,7 @@ impl GithubApp {
             .with_tcp(tcp)
             .with_default_tls()
             .with_auto_http()
-            .with_user_agent("automoton-octocat/0.1.0".to_owned())
+            .with_user_agent("alexrudy/octocat/0.1.0".to_owned())
             .with_timeout(TIMEOUT)
             .build_service();
 
