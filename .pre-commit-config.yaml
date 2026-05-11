@@ -40,7 +40,7 @@ repos:
           - "rust"
       - id: cargo-check
         name: cargo check
-        entry: cargo check
+        entry: cargo check --all-features --all-targets
         pass_filenames: false
         language: rust
         types:

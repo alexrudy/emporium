@@ -56,7 +56,7 @@ zeroize = "1"
 
 [workspace.dependencies.hyperdriver]
 version = "0.12.3"
-features = ["stream", "tls", "tls-ring", "server", "client", "incoming", "sni"]
+features = ["stream", "tls", "server", "client", "incoming", "sni"]
 
 [workspace.dependencies.tokio]
 version = "1"
