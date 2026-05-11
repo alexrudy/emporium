@@ -151,7 +151,7 @@ impl SecretManager {
     /// Construct a 1Password Secrets Manager from environment variables
     pub async fn new_from_environmnet() -> Result<Self, OnePasswordError> {
         let host: http::Uri = read_env_var(HOST)?.parse().map_err(|_| {
-            OnePasswordError::Configuration(format!("Environment variable {HOST} not a URL!"))
+            OnePasswordError::Configuration(format!("Environment variable {HOST} is not a URL!"))
         })?;
 
         let token = read_env_var(TOKEN)?;
