@@ -63,6 +63,11 @@ pub enum StorageConfig {
     #[serde(alias = "b2env")]
     B2Env,
 
+    /// Backblaze B2 storage backend, using onepassword secret references for configuration
+    #[cfg(all(feature = "b2", feature = "onepassword"))]
+    #[serde(alias = "b2-1pw")]
+    B2OnePassword(b2_onepassword_config::B2OnePasswordConfig),
+
     /// Backblaze B2 storage backend, using multiple accounts to access multiple buckets.
     #[cfg(feature = "b2")]
     B2Multi(b2_client::B2MultiConfig),
@@ -97,10 +102,55 @@ impl StorageConfig {
                 })?;
                 app.client().await?.into()
             }
+            #[cfg(all(feature = "b2", feature = "onepassword"))]
+            StorageConfig::B2OnePassword(config) => {
+                use b2_client::B2ApplicationKey;
+                use onepassword::SecretManager;
+                use url::Url;
+
+                let secrets = SecretManager::new_from_environmnet()
+                    .await
+                    .map_err(|error| {
+                        use storage_driver::StorageErrorKind;
+                        StorageError::new("B2", StorageErrorKind::PermissionDenied, error)
+                    })?;
+                let key = secrets
+                    .get(Url::parse(&config.key).map_err(|error| {
+                        StorageError::new("B2", StorageErrorKind::PermissionDenied, error)
+                    })?)
+                    .await
+                    .map_err(|error| {
+                        use storage_driver::StorageErrorKind;
+                        StorageError::new("B2", StorageErrorKind::PermissionDenied, error)
+                    })?;
+                let key_id = secrets
+                    .get(Url::parse(&config.key_id).map_err(|error| {
+                        StorageError::new("B2", StorageErrorKind::PermissionDenied, error)
+                    })?)
+                    .await
+                    .map_err(|error| {
+                        use storage_driver::StorageErrorKind;
+                        StorageError::new("B2", StorageErrorKind::PermissionDenied, error)
+                    })?;
+
+                let app = B2ApplicationKey::new(key_id, key);
+                app.client().await?.into()
+            }
             #[cfg(feature = "b2")]
             StorageConfig::B2Multi(config) => config.client().into(),
         };
         Ok(client)
+    }
+}
+
+#[cfg(all(feature = "b2", feature = "onepassword"))]
+mod b2_onepassword_config {
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct B2OnePasswordConfig {
+        pub key: String,
+        pub key_id: String,
     }
 }
 

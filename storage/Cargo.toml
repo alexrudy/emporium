@@ -10,17 +10,20 @@ b2-client = { path = "../services/b2-client", optional = true }
 camino = { workspace = true, features = ["serde1"] }
 chrono.workspace = true
 http.workspace = true
+onepassword = { path = "../services/onepassword", optional = true }
 serde.workspace = true
 storage-driver.path = "../storage-driver"
 tokio = { workspace = true, features = ["sync", "io-util"] }
 tracing.workspace = true
 tempfile = { workspace = true, optional = true }
+url = { workspace = true, optional = true }
 
 [features]
 default = ["b2", "local"]
 b2 = ["dep:b2-client"]
 local = ["tokio/fs"]
 tmp = ["local", "tokio/fs", "dep:tempfile"]
+onepassword = ["dep:onepassword", "dep:url"]
 
 [lints]
 workspace = true

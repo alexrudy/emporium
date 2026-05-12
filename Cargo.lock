@@ -2181,11 +2181,13 @@ dependencies = [
  "camino",
  "chrono",
  "http",
+ "onepassword",
  "serde",
  "storage-driver",
  "tempfile",
  "tokio",
  "tracing",
+ "url",
 ]
 
 [[package]]
