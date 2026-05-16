@@ -11,6 +11,7 @@ required-features = ["cli", "tls-aws-lc"]
 
 [dependencies]
 axum.workspace = true
+b2-client = { path = "../b2-client", optional = true }
 bytes.workspace = true
 camino.workspace = true
 clap = { version = "4.6.1", features = ["derive"], optional = true }
@@ -30,6 +31,8 @@ uuid = { workspace = true, features = ["v4"] }
 [features]
 tls-ring = ["storage/tls-ring"]
 tls-aws-lc = ["storage/tls-aws-lc"]
+b2 = ["dep:b2-client"]
+onepassword = ["b2-client/onepassword"]
 cli = ["tokio/macros", "tokio/rt-multi-thread", "dep:clap", "dep:toml_edit", "dep:tracing-subscriber"]
 
 [dev-dependencies]
@@ -43,3 +46,6 @@ tracing-subscriber.workspace = true
 
 [lints]
 workspace = true
+
+[package.metadata.cargo-machete]
+ignored = ["b2-client"]
