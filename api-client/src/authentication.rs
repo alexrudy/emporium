@@ -49,7 +49,9 @@ where
     header
 }
 
-/// Trait to represent authenticating with an API queried via reqwest.
+/// Trait to represent authenticating with an API
+///
+/// Use `()` for no authentication.
 pub trait Authentication: Clone {
     /// Called by the `ApiClient` to implement authorization.
     fn authenticate<B>(&self, req: http::Request<B>) -> http::Request<B>;
