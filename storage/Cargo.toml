@@ -24,6 +24,9 @@ b2 = ["dep:b2-client"]
 local = ["tokio/fs"]
 tmp = ["local", "tokio/fs", "dep:tempfile"]
 onepassword = ["dep:onepassword", "dep:url"]
+tls-ring = ["b2-client/tls-ring"]
+tls-aws-lc = ["b2-client/tls-aws-lc"]
+
 
 [lints]
 workspace = true

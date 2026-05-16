@@ -15,5 +15,10 @@ tracing.workspace = true
 thiserror.workspace = true
 url.workspace = true
 
+[features]
+tls-ring = ["api-client/tls-ring"]
+tls-aws-lc = ["api-client/tls-aws-lc"]
+
+
 [lints]
 workspace = true

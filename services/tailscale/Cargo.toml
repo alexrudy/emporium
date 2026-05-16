@@ -13,6 +13,10 @@ serde = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
 tokio.workspace = true
 
+[features]
+tls-ring = ["api-client/tls-ring"]
+tls-aws-lc = ["api-client/tls-aws-lc"]
+
 [dev-dependencies]
 indoc.workspace = true
 

@@ -7,7 +7,7 @@ license = "MIT"
 [[bin]]
 name = "registry-server"
 path = "src/main.rs"
-required-features = ["cli"]
+required-features = ["cli", "tls-aws-lc"]
 
 [dependencies]
 axum.workspace = true
@@ -28,6 +28,8 @@ tracing-subscriber = { workspace = true, optional = true }
 uuid = { workspace = true, features = ["v4"] }
 
 [features]
+tls-ring = ["storage/tls-ring"]
+tls-aws-lc = ["storage/tls-aws-lc"]
 cli = ["tokio/macros", "tokio/rt-multi-thread", "dep:clap", "dep:toml_edit"]
 
 [dev-dependencies]

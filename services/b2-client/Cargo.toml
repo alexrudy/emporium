@@ -31,6 +31,10 @@ tokio-util = { workspace = true, features = ["io"] }
 tower.workspace = true
 tracing.workspace = true
 
+[features]
+tls-ring = ["api-client/tls-ring"]
+tls-aws-lc = ["api-client/tls-aws-lc"]
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }
 tracing-subscriber.workspace = true

@@ -14,5 +14,10 @@ futures.workspace = true
 tokio = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 
+[features]
+tls-ring = ["storage/tls-ring"]
+tls-aws-lc = ["storage/tls-aws-lc"]
+
+
 [lints]
 workspace = true
