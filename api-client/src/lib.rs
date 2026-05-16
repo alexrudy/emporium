@@ -201,6 +201,29 @@ where
         RequestBuilder::new(self.clone(), url, Method::DELETE)
     }
 
+    /// Create a HEAD request builder for the client
+    pub fn head(&self, endpoint: &str) -> RequestBuilder {
+        let url = self.join_endpoint(endpoint);
+        RequestBuilder::new(self.clone(), url, Method::HEAD)
+    }
+
+    /// Create a PATCH request builder for the client
+    pub fn patch(&self, endpoint: &str) -> RequestBuilder {
+        let url = self.join_endpoint(endpoint);
+        RequestBuilder::new(self.clone(), url, Method::PATCH)
+    }
+
+    /// Create an OPTIONS request builder for the client
+    pub fn options(&self, endpoint: &str) -> RequestBuilder {
+        let url = self.join_endpoint(endpoint);
+        RequestBuilder::new(self.clone(), url, Method::OPTIONS)
+    }
+
+    /// Create a custom request builder for the client
+    pub fn builder(&self, uri: Uri, method: http::Method) -> RequestBuilder {
+        RequestBuilder::new(self.clone(), uri, method)
+    }
+
     /// Execute a request and return the response
     pub async fn execute(&self, req: http::Request<Body>) -> Result<Response, Error> {
         let parts = req.parts();
