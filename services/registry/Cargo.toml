@@ -30,7 +30,7 @@ uuid = { workspace = true, features = ["v4"] }
 [features]
 tls-ring = ["storage/tls-ring"]
 tls-aws-lc = ["storage/tls-aws-lc"]
-cli = ["tokio/macros", "tokio/rt-multi-thread", "dep:clap", "dep:toml_edit"]
+cli = ["tokio/macros", "tokio/rt-multi-thread", "dep:clap", "dep:toml_edit", "dep:tracing-subscriber"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
