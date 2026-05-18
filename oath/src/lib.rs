@@ -29,6 +29,7 @@
 //!
 //! The refresh-aware client wrapper (`OAuth2Client`) lands in Phase 3.
 
+pub mod client;
 pub mod endpoint;
 pub mod error;
 pub mod grant;
@@ -37,11 +38,13 @@ pub mod scope;
 pub mod state;
 pub mod token;
 
+pub use crate::client::{OAuth2Client, OAuth2RequestBuilder, RefreshStrategy};
 pub use crate::endpoint::{ClientAuthStyle, TokenEndpoint};
 pub use crate::error::{Error, TokenErrorCode, TokenErrorResponse};
 pub use crate::grant::{
     AuthorizationCodeRequest, AuthorizationUrl, CallbackError, ClientCredentialsRequest,
-    PendingAuthorization, RefreshRequest, TokenRequest,
+    DeviceAuthorizationResponse, DeviceCodeRequest, PendingAuthorization, RefreshRequest,
+    TokenRequest,
 };
 pub use crate::pkce::{PkceChallenge, PkceMethod, PkceVerifier};
 pub use crate::scope::{Scope, ScopeSet};

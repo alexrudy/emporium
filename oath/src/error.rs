@@ -51,6 +51,23 @@ pub enum Error {
     /// [`crate::grant::AuthorizationUrl`]) was attempted.
     #[error("TokenEndpoint has no auth_uri configured")]
     MissingAuthUri,
+
+    /// The token endpoint was built without a `device_uri`, but
+    /// [`crate::endpoint::TokenEndpoint::start_device_flow`] was called.
+    #[error("TokenEndpoint has no device_uri configured")]
+    MissingDeviceUri,
+
+    /// Polling for a device-flow access token gave up before the user
+    /// completed authorization. Returned when the server's stated
+    /// `expires_in` elapses without a success or an explicit error.
+    #[error("device authorization flow timed out client-side")]
+    DeviceFlowTimeout,
+
+    /// [`crate::client::OAuth2Client::from_authorization_code`] was
+    /// given a [`crate::token::TokenSet`] without a `refresh_token`, so
+    /// no refresh strategy can be constructed.
+    #[error("TokenSet has no refresh_token; cannot build a refreshable OAuth2Client")]
+    NoRefreshToken,
 }
 
 /// An OAuth2 error response body (RFC 6749 §5.2).

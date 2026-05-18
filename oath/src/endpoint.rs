@@ -17,8 +17,9 @@ use secret::Secret;
 use thiserror::Error;
 use tower::ServiceExt as _;
 
-use crate::error::{Error, TokenErrorResponse};
-use crate::grant::TokenRequest;
+use crate::error::{Error, TokenErrorCode, TokenErrorResponse};
+use crate::grant::{DeviceAuthorizationResponse, DeviceCodeRequest, TokenRequest};
+use crate::scope::ScopeSet;
 use crate::token::TokenResponse;
 
 /// How the client credentials are presented to the token endpoint.
@@ -50,6 +51,7 @@ struct Inner {
     client_secret: Option<Secret>,
     auth_uri: Option<Uri>,
     token_uri: Uri,
+    device_uri: Option<Uri>,
     redirect_uri: Option<Uri>,
     auth_style: ClientAuthStyle,
     transport: SharedClientService<Body, Body>,
@@ -62,6 +64,7 @@ impl fmt::Debug for Inner {
             .field("client_secret", &self.client_secret)
             .field("auth_uri", &self.auth_uri)
             .field("token_uri", &self.token_uri)
+            .field("device_uri", &self.device_uri)
             .field("redirect_uri", &self.redirect_uri)
             .field("auth_style", &self.auth_style)
             .finish_non_exhaustive()
@@ -97,6 +100,11 @@ impl TokenEndpoint {
         &self.inner.token_uri
     }
 
+    /// The device authorization endpoint URI, if configured.
+    pub fn device_uri(&self) -> Option<&Uri> {
+        self.inner.device_uri.as_ref()
+    }
+
     /// The configured redirect URI, if any. Sent as `redirect_uri` in
     /// authorization-code exchanges and in the authorization URL.
     pub fn redirect_uri(&self) -> Option<&Uri> {
@@ -110,11 +118,84 @@ impl TokenEndpoint {
 
     /// Exchange a grant for a token response.
     pub async fn exchange(&self, grant: impl Into<TokenRequest>) -> Result<TokenResponse, Error> {
-        let mut fields = grant.into().build_fields(self.inner.redirect_uri.as_ref());
+        let fields = grant.into().build_fields(self.inner.redirect_uri.as_ref());
+        self.post_form_for(&self.inner.token_uri, fields).await
+    }
 
+    /// Initiate the device authorization grant (RFC 8628 §3.1).
+    ///
+    /// POSTs `client_id` (+ optional `scope`) to the configured
+    /// `device_uri`. The returned [`DeviceAuthorizationResponse`] holds
+    /// the `user_code` you display to the user and the `device_code`
+    /// you feed to [`Self::poll_device_token`].
+    pub async fn start_device_flow(
+        &self,
+        scope: Option<ScopeSet>,
+    ) -> Result<DeviceAuthorizationResponse, Error> {
+        let device_uri = self
+            .inner
+            .device_uri
+            .clone()
+            .ok_or(Error::MissingDeviceUri)?;
+        let mut fields = Vec::with_capacity(1);
+        if let Some(scope) = scope {
+            fields.push(("scope", scope.to_string()));
+        }
+        self.post_form_for(&device_uri, fields).await
+    }
+
+    /// Poll the token endpoint until the user completes the device flow.
+    ///
+    /// Honors the server's `interval` and `expires_in`. Per RFC 8628 §3.5,
+    /// `authorization_pending` is silently retried, and `slow_down`
+    /// increases the polling interval by 5 seconds. Other server-issued
+    /// errors (including `access_denied` and `expired_token`) propagate as
+    /// [`Error::TokenError`]. If `expires_in` elapses without a result,
+    /// returns [`Error::DeviceFlowTimeout`].
+    pub async fn poll_device_token(
+        &self,
+        auth: &DeviceAuthorizationResponse,
+    ) -> Result<TokenResponse, Error> {
+        let deadline =
+            tokio::time::Instant::now() + std::time::Duration::from_secs(auth.expires_in);
+        let mut interval = std::time::Duration::from_secs(auth.interval.max(1));
+
+        loop {
+            tokio::time::sleep(interval).await;
+
+            if tokio::time::Instant::now() >= deadline {
+                return Err(Error::DeviceFlowTimeout);
+            }
+
+            let request = DeviceCodeRequest::new(auth.device_code.clone());
+            match self.exchange(request).await {
+                Ok(response) => return Ok(response),
+                Err(Error::TokenError(err)) => match err.code {
+                    TokenErrorCode::Other(ref code) if code == "authorization_pending" => {
+                        // Keep polling at the same cadence.
+                    }
+                    TokenErrorCode::Other(ref code) if code == "slow_down" => {
+                        // RFC 8628 §3.5: increase the polling interval by 5 seconds.
+                        interval += std::time::Duration::from_secs(5);
+                    }
+                    _ => return Err(Error::TokenError(err)),
+                },
+                Err(other) => return Err(other),
+            }
+        }
+    }
+
+    async fn post_form_for<R>(
+        &self,
+        target: &Uri,
+        mut fields: Vec<(&'static str, String)>,
+    ) -> Result<R, Error>
+    where
+        R: serde::de::DeserializeOwned,
+    {
         let mut builder = Request::builder()
             .method(Method::POST)
-            .uri(self.inner.token_uri.clone())
+            .uri(target.clone())
             .header(
                 http::header::CONTENT_TYPE,
                 HeaderValue::from_static("application/x-www-form-urlencoded"),
@@ -143,7 +224,7 @@ impl TokenEndpoint {
         let body = serde_urlencoded::to_string(&fields).expect("OAuth2 form fields must serialize");
         let request = builder
             .body(Body::from(body))
-            .expect("token endpoint request must build");
+            .expect("OAuth2 form request must build");
 
         let response = self
             .inner
@@ -157,7 +238,9 @@ impl TokenEndpoint {
     }
 }
 
-async fn parse_response(response: Response<Body>) -> Result<TokenResponse, Error> {
+async fn parse_response<R: serde::de::DeserializeOwned>(
+    response: Response<Body>,
+) -> Result<R, Error> {
     let (parts, body) = response.into_parts();
     let status = parts.status;
 
@@ -168,11 +251,9 @@ async fn parse_response(response: Response<Body>) -> Result<TokenResponse, Error
     let bytes = collected.to_bytes();
 
     if status.is_success() {
-        return serde_json::from_slice::<TokenResponse>(&bytes).map_err(|source| {
-            Error::Deserialize {
-                source,
-                body: String::from_utf8_lossy(&bytes).into_owned(),
-            }
+        return serde_json::from_slice::<R>(&bytes).map_err(|source| Error::Deserialize {
+            source,
+            body: String::from_utf8_lossy(&bytes).into_owned(),
         });
     }
 
@@ -194,6 +275,7 @@ pub struct TokenEndpointBuilder {
     client_secret: Option<Secret>,
     auth_uri: Option<Uri>,
     token_uri: Option<Uri>,
+    device_uri: Option<Uri>,
     redirect_uri: Option<Uri>,
     auth_style: ClientAuthStyle,
     transport: Option<SharedClientService<Body, Body>>,
@@ -206,6 +288,7 @@ impl fmt::Debug for TokenEndpointBuilder {
             .field("client_secret", &self.client_secret)
             .field("auth_uri", &self.auth_uri)
             .field("token_uri", &self.token_uri)
+            .field("device_uri", &self.device_uri)
             .field("redirect_uri", &self.redirect_uri)
             .field("auth_style", &self.auth_style)
             .finish_non_exhaustive()
@@ -231,10 +314,17 @@ impl TokenEndpointBuilder {
         self
     }
 
-    /// Optional: the authorization endpoint URI. Only needed for grants
-    /// that involve a user-agent redirect (authorization code, device).
+    /// Optional: the authorization endpoint URI. Required for the
+    /// authorization-code grant ([`crate::grant::AuthorizationUrl`]).
     pub fn auth_uri(mut self, uri: Uri) -> Self {
         self.auth_uri = Some(uri);
+        self
+    }
+
+    /// Optional: the device authorization endpoint URI. Required to use
+    /// [`TokenEndpoint::start_device_flow`] (RFC 8628).
+    pub fn device_uri(mut self, uri: Uri) -> Self {
+        self.device_uri = Some(uri);
         self
     }
 
@@ -287,6 +377,7 @@ impl TokenEndpointBuilder {
                 client_secret: self.client_secret,
                 auth_uri: self.auth_uri,
                 token_uri,
+                device_uri: self.device_uri,
                 redirect_uri: self.redirect_uri,
                 auth_style: self.auth_style,
                 transport,

@@ -1420,6 +1420,7 @@ version = "0.1.0"
 dependencies = [
  "api-client",
  "base64",
+ "bytes",
  "chrono",
  "http",
  "http-body-util",

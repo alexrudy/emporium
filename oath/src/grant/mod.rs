@@ -9,12 +9,14 @@ use http::Uri;
 mod authorization_code;
 mod authorization_url;
 mod client_credentials;
+mod device_code;
 mod pending;
 mod refresh;
 
 pub use self::authorization_code::AuthorizationCodeRequest;
 pub use self::authorization_url::AuthorizationUrl;
 pub use self::client_credentials::ClientCredentialsRequest;
+pub use self::device_code::{DeviceAuthorizationResponse, DeviceCodeRequest};
 pub use self::pending::{CallbackError, PendingAuthorization};
 pub use self::refresh::RefreshRequest;
 
@@ -29,6 +31,8 @@ pub enum TokenRequest {
     AuthorizationCode(AuthorizationCodeRequest),
     /// Refresh Token grant (RFC 6749 §6).
     Refresh(RefreshRequest),
+    /// Device Authorization grant (RFC 8628 §3.4).
+    DeviceCode(DeviceCodeRequest),
 }
 
 impl TokenRequest {
@@ -49,6 +53,7 @@ impl TokenRequest {
                 fields
             }
             Self::Refresh(r) => r.into_fields(),
+            Self::DeviceCode(r) => r.into_fields(),
         }
     }
 }
@@ -68,6 +73,12 @@ impl From<AuthorizationCodeRequest> for TokenRequest {
 impl From<RefreshRequest> for TokenRequest {
     fn from(r: RefreshRequest) -> Self {
         Self::Refresh(r)
+    }
+}
+
+impl From<DeviceCodeRequest> for TokenRequest {
+    fn from(r: DeviceCodeRequest) -> Self {
+        Self::DeviceCode(r)
     }
 }
 

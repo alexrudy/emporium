@@ -123,10 +123,15 @@ impl<'a> AuthorizationUrl<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use api_client::mock::MockService;
     use secret::Secret;
     use std::collections::HashMap;
 
     fn endpoint() -> TokenEndpoint {
+        // Inject a no-op transport so we don't pay the cost of building a
+        // default TLS stack — and, importantly, avoid the rustls crypto
+        // provider panic when both `tls-ring` and `tls-aws-lc` features
+        // are enabled (e.g. `cargo test --all-features`).
         TokenEndpoint::builder()
             .client_id("the-client")
             .client_secret(Secret::from("the-secret"))
@@ -137,6 +142,7 @@ mod tests {
             )
             .token_uri("https://accounts.example.com/oauth/token".parse().unwrap())
             .redirect_uri("https://app.example.com/cb".parse().unwrap())
+            .transport(MockService::new())
             .build()
             .unwrap()
     }
@@ -178,6 +184,7 @@ mod tests {
         let endpoint = TokenEndpoint::builder()
             .client_id("x")
             .token_uri("https://example.com/token".parse().unwrap())
+            .transport(MockService::new())
             .build()
             .unwrap();
         let err = AuthorizationUrl::new(&endpoint).begin().unwrap_err();
