@@ -11,6 +11,7 @@ members = [
     "services/linode",
     "services/octocat",
     "services/tailscale", "services/onepassword", "services/registry", "oath",
+    "ott",
 ]
 
 [workspace.dependencies]
