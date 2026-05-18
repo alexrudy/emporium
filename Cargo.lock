@@ -1422,12 +1422,17 @@ dependencies = [
  "base64",
  "chrono",
  "http",
+ "http-body-util",
+ "hyperdriver",
  "rand 0.9.2",
  "secret",
  "serde",
  "serde_json",
+ "serde_urlencoded",
  "sha2",
  "thiserror",
+ "tokio",
+ "tower",
  "tracing",
 ]
 

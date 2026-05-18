@@ -19,6 +19,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use rand::TryRngCore as _;
 use rand::rngs::OsRng;
 use secret::Secret;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
@@ -65,7 +66,11 @@ impl fmt::Display for PkceMethod {
 
 /// A high-entropy random string the client retains during the
 /// authorization-code flow and submits when exchanging the code.
-#[derive(Debug, Clone)]
+///
+/// `Serialize`/`Deserialize` are derived so the verifier can be stashed
+/// in a pre-auth session store between the `/auth/login` and
+/// `/auth/callback` requests. The wire format is the raw verifier string.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PkceVerifier(Secret);
 
 impl PkceVerifier {

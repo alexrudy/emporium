@@ -10,13 +10,18 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use rand::TryRngCore as _;
 use rand::rngs::OsRng;
 use secret::Secret;
+use serde::{Deserialize, Serialize};
 
 /// A CSRF state token.
 ///
 /// Stash a freshly generated token alongside the authorization request,
 /// then call [`StateToken::verify`] with the value returned in the
 /// redirect.
-#[derive(Debug, Clone)]
+///
+/// `Serialize`/`Deserialize` are derived so the token can be stored in
+/// a pre-auth session between the `/auth/login` and `/auth/callback`
+/// requests. The wire format is the raw token string.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StateToken(Secret);
 
 impl StateToken {

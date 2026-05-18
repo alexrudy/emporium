@@ -45,6 +45,12 @@ pub enum Error {
     /// (no refresh token stored, or the refresh attempt was rejected).
     #[error("OAuth2 token expired and could not be refreshed")]
     Expired,
+
+    /// The token endpoint was built without an `auth_uri`, but an
+    /// operation that requires one (e.g. building an
+    /// [`crate::grant::AuthorizationUrl`]) was attempted.
+    #[error("TokenEndpoint has no auth_uri configured")]
+    MissingAuthUri,
 }
 
 /// An OAuth2 error response body (RFC 6749 §5.2).

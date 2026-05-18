@@ -9,16 +9,25 @@ secret.path = "../secret"
 base64.workspace = true
 chrono.workspace = true
 http.workspace = true
+http-body-util.workspace = true
+hyperdriver.workspace = true
 rand.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+serde_urlencoded.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
+tower = { workspace = true, features = ["util"] }
 tracing.workspace = true
 
 [features]
-tls-ring = ["api-client/tls-ring"]
-tls-aws-lc = ["api-client/tls-aws-lc"]
+tls-ring = ["api-client/tls-ring", "hyperdriver/tls-ring"]
+tls-aws-lc = ["api-client/tls-aws-lc", "hyperdriver/tls-aws-lc"]
+
+[dev-dependencies]
+hyperdriver = { workspace = true, features = ["tls-ring"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [lints]
 workspace = true
