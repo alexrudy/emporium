@@ -1,0 +1,24 @@
+[package]
+name = "oath"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+api-client.path = "../api-client"
+secret.path = "../secret"
+base64.workspace = true
+chrono.workspace = true
+http.workspace = true
+rand.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[features]
+tls-ring = ["api-client/tls-ring"]
+tls-aws-lc = ["api-client/tls-aws-lc"]
+
+[lints]
+workspace = true
