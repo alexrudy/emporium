@@ -39,7 +39,7 @@ struct StaticAssets;
 async fn main() -> eyre::Result<()> {
     install_tracing();
 
-    let config = config::Config::from_env().wrap_err("loading configuration")?;
+    let config = load_config().wrap_err("loading configuration")?;
     tracing::info!(
         bind_addr = %config.bind_addr,
         data_dir = %config.data_dir,
@@ -101,6 +101,42 @@ async fn main() -> eyre::Result<()> {
 
     axum::serve(listener, app).await.wrap_err("axum::serve")?;
     Ok(())
+}
+
+/// Load configuration from a TOML file when requested, otherwise from
+/// process environment variables.
+///
+/// TOML mode is chosen by either `--config <path>` (or `-c <path>`,
+/// `--config=<path>`) on the command line, or by `OTT_CONFIG=<path>`
+/// in the environment. The CLI form takes precedence.
+fn load_config() -> eyre::Result<config::Config> {
+    if let Some(path) = config_path_from_args() {
+        tracing::info!(path = %path.display(), "loading TOML config");
+        return config::Config::from_toml_path(&path);
+    }
+    if let Ok(path) = std::env::var("OTT_CONFIG") {
+        let path = std::path::PathBuf::from(path);
+        tracing::info!(path = %path.display(), "loading TOML config (OTT_CONFIG)");
+        return config::Config::from_toml_path(&path);
+    }
+    tracing::info!("loading config from process environment");
+    config::Config::from_env()
+}
+
+fn config_path_from_args() -> Option<std::path::PathBuf> {
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
+        if let Some(rest) = arg.strip_prefix("--config=") {
+            return Some(rest.into());
+        }
+        if let Some(rest) = arg.strip_prefix("-c=") {
+            return Some(rest.into());
+        }
+        if arg == "--config" || arg == "-c" {
+            return args.next().map(std::path::PathBuf::from);
+        }
+    }
+    None
 }
 
 /// Build the configured `TokenEndpoint`, fetching discovery metadata

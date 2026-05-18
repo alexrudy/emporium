@@ -23,7 +23,8 @@ secret = { path = "../secret" }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 storage = { path = "../storage" }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "fs"] }
+toml.workspace = true
 tower.workspace = true
 tower-http = { workspace = true, features = ["trace"] }
 tracing.workspace = true

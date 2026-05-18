@@ -72,7 +72,22 @@ After signing in once, you should see:
 - Signing in again updates `last_login_at` (and currently
   `created_at` — see "Known issues" below).
 
-## Environment variables
+## Configuration
+
+ott reads its config from one of two sources, in priority order:
+
+1. **A TOML file**, when either `--config <path>` (or `-c <path>`) is
+   passed on the CLI, or `OTT_CONFIG=<path>` is set in the environment.
+   See [`ott.toml.example`](ott.toml.example) for the schema; unknown
+   keys are rejected so typos surface at startup.
+2. **Process environment variables** when no TOML path is provided.
+   See [`.env.example`](.env.example) for the variable list.
+
+The two sources are not mixed — either you point ott at a TOML file and
+everything comes from there, or you set env vars and nothing else. Pick
+based on your deployment style.
+
+### Environment variables
 
 | Var                   | Required | Default                       |
 |-----------------------|----------|-------------------------------|

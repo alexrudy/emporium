@@ -1,0 +1,75 @@
+# ott — example configuration.
+#
+# Copy this file, edit the placeholders, and point ott at it with
+# either:
+#
+#     cargo run -p ott -- --config ott.toml
+#     OTT_CONFIG=ott.toml cargo run -p ott
+#
+# Either form takes precedence over reading individual env vars. The
+# file is parsed with `serde + toml`; unknown keys are rejected so
+# typos surface at startup rather than silently being ignored.
+#
+# Treat this file like a secrets file: keep it out of git, set
+# permissions to `chmod 600`. Or split the secrets out into env vars
+# (set them after `OTT_CONFIG`) — env-var mode is documented in
+# `.env.example`.
+
+[oauth]
+# Required: client credentials issued by the provider.
+client_id = "your-client-id-here"
+client_secret = "your-client-secret-here"
+
+# Display name shown on the "Sign in with X" button. Default: "OAuth".
+provider_name = "Google"
+
+# OAuth2 scopes to request. `openid` is required for the id_token-based
+# identity resolver; ott adds it defensively if you forget. Default:
+# "openid email profile".
+scopes = "openid email profile"
+
+# Provider endpoints: set EITHER `issuer` (discovery — recommended for
+# OIDC providers; ott fetches <issuer>/.well-known/openid-configuration
+# at startup) OR both `auth_uri` and `token_uri` explicitly.
+issuer = "https://accounts.google.com"
+# auth_uri  = "https://accounts.google.com/o/oauth2/v2/auth"
+# token_uri = "https://oauth2.googleapis.com/token"
+
+[cookies]
+# Required: cookie signing key. Base64-encoded, at least 64 bytes.
+# Generate with: `openssl rand -base64 64 | tr -d '\n'`
+key = "replace-me-with-openssl-rand-base64-64-output"
+
+# Whether to set the `Secure` attribute on outgoing cookies. Default:
+# true. Must be false for `http://localhost` development; true for
+# any HTTPS deployment.
+secure = false
+
+[server]
+# Where to bind the HTTP listener. Default: "127.0.0.1:3000".
+bind_addr = "127.0.0.1:3000"
+
+# Public origin the redirect URI lives under. Combined with
+# `/auth/callback` to form the URL you register with the provider.
+# Default: "http://127.0.0.1:3000".
+external_origin = "http://127.0.0.1:3000"
+
+# Where the JsonFileUserStore writes <sub>.json records.
+# Default: "./data".
+data_dir = "./data"
+
+# ─── Provider cheat sheet ─────────────────────────────────────────────
+#
+# Google
+#   issuer = "https://accounts.google.com"
+#   Register at https://console.cloud.google.com/apis/credentials
+#
+# Okta (developer org)
+#   issuer = "https://<your-org>.okta.com/oauth2/default"
+#
+# Keycloak (local docker, default realm "master")
+#   issuer = "http://127.0.0.1:8080/realms/master"
+#
+# For every provider, set the Authorized Redirect URI to
+#     ${external_origin}/auth/callback
+# — the exact match matters; trailing-slash mismatches will be rejected.

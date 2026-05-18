@@ -52,6 +52,7 @@ sha1 = "0.10"
 sha2 = "0.10"
 static_assertions = "1"
 tempfile = "3"
+toml = "0.8"
 thiserror = "2"
 tokio-util = "0.7"
 tower = { version = "0.5", features = ["util"] }
