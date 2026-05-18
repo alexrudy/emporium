@@ -17,7 +17,9 @@ members = [
 arc-swap = "1"
 async-trait = "0.1"
 axum = "0.8"
+axum-extra = { version = "0.12", default-features = false }
 base64 = "0.22"
+cookie = "0.18"
 bytes = "1"
 camino = { version = "1", features = [] }
 chrono = { version = "0.4", features = [] }
