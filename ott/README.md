@@ -13,7 +13,11 @@ shows the resulting user record on a profile page.
                                        └── writes users/<sub>.json (LocalDriver)
 ```
 
-## Quick start (Google)
+## Quick start (Google, discovery mode)
+
+ott can discover the provider's endpoints from its
+`.well-known/openid-configuration` document — set `OAUTH_ISSUER` and
+the explicit URLs go away.
 
 1. Visit https://console.cloud.google.com/apis/credentials, create an
    OAuth 2.0 Client ID of type **Web application**.
@@ -28,8 +32,7 @@ shows the resulting user record on a profile page.
    ```sh
    export OAUTH_CLIENT_ID="<your client id>"
    export OAUTH_CLIENT_SECRET="<your client secret>"
-   export OAUTH_AUTH_URI="https://accounts.google.com/o/oauth2/v2/auth"
-   export OAUTH_TOKEN_URI="https://oauth2.googleapis.com/token"
+   export OAUTH_ISSUER="https://accounts.google.com"
    export COOKIE_KEY="<the openssl output>"
    export SECURE_COOKIES=false           # http://localhost is not https
    export PROVIDER_NAME="Google"
@@ -39,14 +42,20 @@ shows the resulting user record on a profile page.
    Google**, complete the consent screen. ott will redirect to
    `/profile` and show the JSON record it persisted.
 
+The discovery fetch happens once, at startup; the resolved
+`token_endpoint` and `authorization_endpoint` are logged. If a
+provider doesn't publish a discovery document, pin the URLs by hand:
+set `OAUTH_AUTH_URI` and `OAUTH_TOKEN_URI` instead of `OAUTH_ISSUER`.
+
 ## Quick start (Okta)
 
 1. Sign up for a free developer org at
    https://developer.okta.com/signup/.
 2. Create a new **Web** application. Set the **Sign-in redirect URI**
    to `http://127.0.0.1:3000/auth/callback`.
-3. Note the **Client ID** and **Client secret**. The OAuth endpoints
-   live under your org's domain:
+3. Note the **Client ID** and **Client secret**. Either set
+   `OAUTH_ISSUER=https://<org>.okta.com/oauth2/default` (discovery
+   mode, recommended) or pin the URLs directly:
    - `OAUTH_AUTH_URI`  = `https://<org>.okta.com/oauth2/default/v1/authorize`
    - `OAUTH_TOKEN_URI` = `https://<org>.okta.com/oauth2/default/v1/token`
 4. Run ott with those env vars and a fresh `COOKIE_KEY`.
@@ -69,8 +78,9 @@ After signing in once, you should see:
 |-----------------------|----------|-------------------------------|
 | `OAUTH_CLIENT_ID`     | yes      | —                             |
 | `OAUTH_CLIENT_SECRET` | yes      | —                             |
-| `OAUTH_AUTH_URI`      | yes      | —                             |
-| `OAUTH_TOKEN_URI`     | yes      | —                             |
+| `OAUTH_ISSUER`        | one of   | —                             |
+| `OAUTH_AUTH_URI`      | one of   | —                             |
+| `OAUTH_TOKEN_URI`     | one of   | —                             |
 | `COOKIE_KEY`          | yes      | — (base64, ≥64 bytes)         |
 | `OAUTH_SCOPES`        | no       | `openid email profile`        |
 | `PROVIDER_NAME`       | no       | `OAuth`                       |
@@ -79,6 +89,13 @@ After signing in once, you should see:
 | `DATA_DIR`            | no       | `./data`                      |
 | `SECURE_COOKIES`      | no       | `true`                        |
 | `RUST_LOG`            | no       | `info,ott=debug,tower_http=info` |
+
+**Endpoint resolution.** Set *either* `OAUTH_ISSUER` (discovery —
+ott fetches `<issuer>/.well-known/openid-configuration` at startup
+and uses the `authorization_endpoint`, `token_endpoint`, and any
+`device_authorization_endpoint` it finds), *or* both
+`OAUTH_AUTH_URI` and `OAUTH_TOKEN_URI` explicitly. If both are set,
+`OAUTH_ISSUER` wins.
 
 The redirect URI registered with the provider must exactly match
 `{EXTERNAL_ORIGIN}/auth/callback`. ott prints both the configured

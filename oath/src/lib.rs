@@ -118,6 +118,7 @@
 //!   into a 401. There's a 60-second clock-drift offset built in.
 
 pub mod client;
+pub mod discovery;
 pub mod endpoint;
 pub mod error;
 pub mod grant;
@@ -129,6 +130,7 @@ pub mod state;
 pub mod token;
 
 pub use crate::client::{OAuth2Client, OAuth2RequestBuilder, RefreshStrategy};
+pub use crate::discovery::ProviderMetadata;
 pub use crate::endpoint::{ClientAuthStyle, TokenEndpoint};
 pub use crate::error::{Error, TokenErrorCode, TokenErrorResponse};
 pub use crate::grant::{

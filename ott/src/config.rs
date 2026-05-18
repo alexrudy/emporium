@@ -41,10 +41,8 @@ pub struct Config {
     pub client_id: String,
     /// OAuth2 client secret issued by the provider.
     pub client_secret: Secret,
-    /// Provider's authorization endpoint.
-    pub auth_uri: Uri,
-    /// Provider's token endpoint.
-    pub token_uri: Uri,
+    /// How to discover (or hard-code) the provider's endpoints.
+    pub endpoints: ProviderEndpoints,
     /// Scopes requested at the authorization endpoint.
     pub scopes: ScopeSet,
     /// Key used to sign the pre-auth and session cookies.
@@ -52,6 +50,24 @@ pub struct Config {
     /// Whether to set `Secure` on outgoing cookies. Turn `false` only
     /// for `http://localhost` development.
     pub secure_cookies: bool,
+}
+
+/// How ott resolves the provider's authorization, token, and (optional)
+/// device endpoints. Either the operator supplies an `OAUTH_ISSUER`
+/// (a discovery URL is derived from it and fetched at startup) or
+/// they wire `OAUTH_AUTH_URI` and `OAUTH_TOKEN_URI` explicitly.
+#[derive(Debug, Clone)]
+pub enum ProviderEndpoints {
+    /// Endpoints will be discovered from
+    /// `<issuer>/.well-known/openid-configuration` at startup.
+    Discover { issuer: Uri },
+    /// Endpoints are pinned at config-load time.
+    Explicit {
+        /// `authorization_endpoint`.
+        auth_uri: Uri,
+        /// `token_endpoint`.
+        token_uri: Uri,
+    },
 }
 
 impl Config {
@@ -79,8 +95,7 @@ impl Config {
 
         let client_id = require(&get, "OAUTH_CLIENT_ID")?;
         let client_secret = Secret::from(require(&get, "OAUTH_CLIENT_SECRET")?);
-        let auth_uri: Uri = parse_env(&get, "OAUTH_AUTH_URI", None)?;
-        let token_uri: Uri = parse_env(&get, "OAUTH_TOKEN_URI", None)?;
+        let endpoints = ProviderEndpoints::from_provider(&get)?;
 
         let scopes_raw = get("OAUTH_SCOPES").unwrap_or_else(|| DEFAULT_SCOPES.into());
         let scopes: ScopeSet = scopes_raw
@@ -98,14 +113,50 @@ impl Config {
             provider_name,
             client_id,
             client_secret,
-            auth_uri,
-            token_uri,
+            endpoints,
             scopes,
             cookie_key,
             secure_cookies,
         })
     }
+}
 
+impl ProviderEndpoints {
+    fn from_provider<F>(get: &F) -> eyre::Result<Self>
+    where
+        F: Fn(&str) -> Option<String>,
+    {
+        let issuer = get("OAUTH_ISSUER");
+        let auth = get("OAUTH_AUTH_URI");
+        let token = get("OAUTH_TOKEN_URI");
+        match (issuer, auth, token) {
+            (Some(raw), _, _) => {
+                let uri = parse_uri(&raw, "OAUTH_ISSUER")?;
+                Ok(ProviderEndpoints::Discover { issuer: uri })
+            }
+            (None, Some(auth_raw), Some(token_raw)) => {
+                let auth_uri = parse_uri(&auth_raw, "OAUTH_AUTH_URI")?;
+                let token_uri = parse_uri(&token_raw, "OAUTH_TOKEN_URI")?;
+                Ok(ProviderEndpoints::Explicit {
+                    auth_uri,
+                    token_uri,
+                })
+            }
+            _ => Err(eyre!(
+                "set OAUTH_ISSUER for `.well-known` discovery, \
+                 or set both OAUTH_AUTH_URI and OAUTH_TOKEN_URI explicitly"
+            )),
+        }
+    }
+}
+
+fn parse_uri(raw: &str, name: &str) -> eyre::Result<Uri> {
+    raw.parse::<Uri>()
+        .map_err(|source| eyre!("{source}"))
+        .with_context(|| format!("parsing env var {name}={raw:?}"))
+}
+
+impl Config {
     /// Public redirect URI sent in the authorization request: the
     /// configured `external_origin` joined to `/auth/callback`.
     pub fn redirect_uri(&self) -> Uri {
@@ -215,19 +266,82 @@ mod tests {
         let cfg = build(minimal_env()).expect("minimal env should load");
         assert_eq!(cfg.client_id, "client");
         assert_eq!(cfg.client_secret.revealed(), "secret");
-        assert_eq!(
-            cfg.auth_uri.to_string(),
-            "https://accounts.example.com/authorize"
-        );
-        assert_eq!(
-            cfg.token_uri.to_string(),
-            "https://accounts.example.com/token"
-        );
+        match cfg.endpoints {
+            ProviderEndpoints::Explicit {
+                auth_uri,
+                token_uri,
+            } => {
+                assert_eq!(
+                    auth_uri.to_string(),
+                    "https://accounts.example.com/authorize"
+                );
+                assert_eq!(token_uri.to_string(), "https://accounts.example.com/token");
+            }
+            ProviderEndpoints::Discover { .. } => panic!("expected Explicit endpoints"),
+        }
         assert_eq!(cfg.bind_addr.to_string(), "127.0.0.1:3000");
         assert_eq!(cfg.data_dir, Utf8PathBuf::from("./data"));
         assert_eq!(cfg.provider_name, "OAuth");
         assert_eq!(cfg.scopes.to_string(), "openid email profile");
         assert!(cfg.secure_cookies);
+    }
+
+    #[test]
+    fn oauth_issuer_selects_discovery_mode() {
+        // OAUTH_ISSUER alone is enough; explicit URIs aren't required.
+        let mut env: Vec<(&'static str, String)> = vec![
+            ("OAUTH_CLIENT_ID", "client".to_owned()),
+            ("OAUTH_CLIENT_SECRET", "secret".to_owned()),
+            ("OAUTH_ISSUER", "https://accounts.example.com".to_owned()),
+            ("COOKIE_KEY", test_cookie_key()),
+        ];
+        let pairs: Vec<(&str, &str)> = env.iter_mut().map(|(k, v)| (*k, v.as_str())).collect();
+        let cfg = Config::from_provider(provider(&pairs)).expect("issuer mode loads");
+        match cfg.endpoints {
+            ProviderEndpoints::Discover { issuer } => {
+                // http::Uri normalizes by adding a trailing slash to
+                // the authority — accept either form.
+                let s = issuer.to_string();
+                assert!(
+                    s == "https://accounts.example.com" || s == "https://accounts.example.com/",
+                    "unexpected issuer normalization: {s}",
+                );
+            }
+            ProviderEndpoints::Explicit { .. } => panic!("expected Discover endpoints"),
+        }
+    }
+
+    #[test]
+    fn oauth_issuer_wins_over_explicit_uris() {
+        // If both are set, OAUTH_ISSUER takes precedence.
+        let env = with_env(&[("OAUTH_ISSUER", "https://accounts.example.com")]);
+        let cfg = build(env).unwrap();
+        assert!(matches!(cfg.endpoints, ProviderEndpoints::Discover { .. }));
+    }
+
+    #[test]
+    fn no_endpoints_at_all_errors() {
+        let env: Vec<(&'static str, String)> = vec![
+            ("OAUTH_CLIENT_ID", "client".to_owned()),
+            ("OAUTH_CLIENT_SECRET", "secret".to_owned()),
+            ("COOKIE_KEY", test_cookie_key()),
+        ];
+        let pairs: Vec<(&str, &str)> = env.iter().map(|(k, v)| (*k, v.as_str())).collect();
+        let err = Config::from_provider(provider(&pairs)).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("OAUTH_ISSUER") && msg.contains("OAUTH_AUTH_URI"),
+            "error must point at both options: {msg}",
+        );
+    }
+
+    #[test]
+    fn only_auth_uri_without_token_uri_errors() {
+        let mut env = minimal_env();
+        env.retain(|(k, _)| *k != "OAUTH_TOKEN_URI");
+        let err = build(env).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(msg.contains("OAUTH_ISSUER") || msg.contains("OAUTH_TOKEN_URI"));
     }
 
     #[test]

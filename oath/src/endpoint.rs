@@ -348,6 +348,27 @@ impl TokenEndpointBuilder {
         self
     }
 
+    /// Populate `auth_uri`, `token_uri`, and `device_uri` from a
+    /// [`crate::discovery::ProviderMetadata`] document.
+    ///
+    /// Endpoints previously set on the builder are overwritten; client
+    /// credentials, redirect URI, and auth style are left untouched.
+    /// Returns an error if the metadata's `token_endpoint` or any
+    /// populated optional endpoint fails to parse as a URI.
+    pub fn from_metadata(
+        mut self,
+        metadata: &crate::discovery::ProviderMetadata,
+    ) -> Result<Self, Error> {
+        self.token_uri = Some(metadata.token_uri()?);
+        if let Some(uri) = metadata.authorization_uri()? {
+            self.auth_uri = Some(uri);
+        }
+        if let Some(uri) = metadata.device_authorization_uri()? {
+            self.device_uri = Some(uri);
+        }
+        Ok(self)
+    }
+
     /// Optional: the redirect URI registered with the provider.
     ///
     /// Used by [`crate::grant::AuthorizationUrl`] and appended to the

@@ -10,11 +10,12 @@ use axum::Router;
 use axum::routing::get;
 use eyre::Context as _;
 use oath::server::{InMemorySessionStore, JsonFileUserStore, OAuth2Router};
-use oath::{Scope, ScopeSet, TokenEndpoint};
+use oath::{ProviderMetadata, Scope, ScopeSet, TokenEndpoint};
 use rust_embed::Embed;
 use storage::LocalDriver;
 use tower_http::trace::TraceLayer;
 
+use crate::config::ProviderEndpoints;
 use crate::embed::EmbedServer;
 
 mod auth;
@@ -56,14 +57,7 @@ async fn main() -> eyre::Result<()> {
     let driver = LocalDriver::new(config.data_dir.clone());
     let users: JsonFileUserStore<LocalDriver, AppUser> = JsonFileUserStore::new(driver, "users");
 
-    let endpoint = TokenEndpoint::builder()
-        .client_id(config.client_id.clone())
-        .client_secret(config.client_secret.clone())
-        .auth_uri(config.auth_uri.clone())
-        .token_uri(config.token_uri.clone())
-        .redirect_uri(config.redirect_uri())
-        .build()
-        .wrap_err("building TokenEndpoint")?;
+    let endpoint = build_endpoint(&config).await?;
 
     let sessions = InMemorySessionStore::default();
 
@@ -107,6 +101,41 @@ async fn main() -> eyre::Result<()> {
 
     axum::serve(listener, app).await.wrap_err("axum::serve")?;
     Ok(())
+}
+
+/// Build the configured `TokenEndpoint`, fetching discovery metadata
+/// at startup if [`ProviderEndpoints::Discover`] is in play.
+async fn build_endpoint(config: &config::Config) -> eyre::Result<TokenEndpoint> {
+    let builder = TokenEndpoint::builder()
+        .client_id(config.client_id.clone())
+        .client_secret(config.client_secret.clone())
+        .redirect_uri(config.redirect_uri());
+
+    let builder = match &config.endpoints {
+        ProviderEndpoints::Explicit {
+            auth_uri,
+            token_uri,
+        } => builder
+            .auth_uri(auth_uri.clone())
+            .token_uri(token_uri.clone()),
+        ProviderEndpoints::Discover { issuer } => {
+            let well_known = ProviderMetadata::well_known_url(issuer);
+            tracing::info!(%issuer, %well_known, "fetching OIDC discovery metadata");
+            let metadata = ProviderMetadata::discover(issuer)
+                .await
+                .with_context(|| format!("discovering OAuth2 metadata at {well_known}"))?;
+            tracing::info!(
+                token_endpoint = %metadata.token_endpoint,
+                authorization_endpoint = ?metadata.authorization_endpoint,
+                "discovery succeeded",
+            );
+            builder
+                .from_metadata(&metadata)
+                .wrap_err("applying discovery metadata to TokenEndpoint")?
+        }
+    };
+
+    builder.build().wrap_err("building TokenEndpoint")
 }
 
 /// We rely on `parse_id_token` to extract identity, which means the
