@@ -147,7 +147,14 @@ where
     }
 
     /// Produce the `axum::Router`.
-    pub fn into_router(self) -> Router {
+    ///
+    /// Generic over the consumer's axum state type `AxS` so the router
+    /// can be merged into an `axum::Router<AxS>` of any shape; OAuth2
+    /// state is threaded via `Extension` internally, not axum state.
+    pub fn into_router<AxS>(self) -> Router<AxS>
+    where
+        AxS: Clone + Send + Sync + 'static,
+    {
         let state = Arc::new(RouterState {
             endpoint: self.endpoint,
             config: self.config.clone(),
@@ -157,7 +164,7 @@ where
             cookie_key: self.cookie_key,
         });
 
-        Router::new()
+        Router::<AxS>::new()
             .route(&self.config.login_path(), get(handlers::login::<S, U>))
             .route(
                 &self.config.callback_path(),

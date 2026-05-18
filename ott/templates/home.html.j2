@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Sign in{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h1 class="h4 card-title">ott</h1>
+        <p class="card-text text-secondary">
+          A tiny app that demonstrates OAuth2 login via the
+          <code>oath</code> crate.
+        </p>
+        <a href="/auth/login" class="btn btn-primary">
+          Sign in with {{ provider_name }}
+        </a>
+        <p class="mt-3 small text-secondary mb-0">
+          Provider callback URL:
+          <code>{{ redirect_uri }}</code>
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
