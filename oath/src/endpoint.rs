@@ -3,7 +3,27 @@
 //! [`TokenEndpoint`] knows how to POST a [`crate::grant::TokenRequest`]
 //! to the configured `/token` URL and parse the response back into a
 //! [`crate::token::TokenResponse`]. It does not own a [`crate::token::TokenSet`]
-//! — refreshing a long-lived credential happens at the layer above.
+//! — refreshing a long-lived credential happens at the layer above
+//! (see [`crate::client::OAuth2Client`]).
+//!
+//! ```no_run
+//! # use oath::{ClientCredentialsRequest, ScopeSet, TokenEndpoint};
+//! # use secret::Secret;
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let endpoint = TokenEndpoint::builder()
+//!     .client_id("svc-account")
+//!     .client_secret(Secret::from(std::env::var("OAUTH_CLIENT_SECRET")?))
+//!     .token_uri("https://provider.example.com/oauth/token".parse()?)
+//!     .build()?;
+//!
+//! let scope: ScopeSet = "read:things".parse()?;
+//! let response = endpoint
+//!     .exchange(ClientCredentialsRequest::new().scope(scope))
+//!     .await?;
+//! println!("got access token, expires in {:?}", response.expires_in);
+//! # Ok(())
+//! # }
+//! ```
 
 use std::fmt;
 use std::sync::Arc;

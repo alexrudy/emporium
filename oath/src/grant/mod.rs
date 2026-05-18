@@ -3,6 +3,15 @@
 //! Each grant has its own builder type that the endpoint accepts via
 //! [`TokenRequest`]. Use [`TokenRequest::from`] (or the impls below) to
 //! convert a grant builder into the enum variant the endpoint expects.
+//!
+//! - [`ClientCredentialsRequest`] — service-to-service.
+//! - [`AuthorizationCodeRequest`] — pair with
+//!   [`AuthorizationUrl`] and [`PendingAuthorization`] for the
+//!   user-agent redirect flow.
+//! - [`RefreshRequest`] — trade a refresh token for a new access token.
+//! - [`DeviceCodeRequest`] — feed the `device_code` returned by
+//!   [`crate::endpoint::TokenEndpoint::start_device_flow`] to
+//!   [`crate::endpoint::TokenEndpoint::poll_device_token`].
 
 use http::Uri;
 

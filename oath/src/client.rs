@@ -7,6 +7,33 @@
 //! [`OAuth2Client::ensure_fresh`] before the request goes out — so a
 //! near-expired token is replaced *before* the API call rather than
 //! after a 401.
+//!
+//! ```no_run
+//! # use oath::{OAuth2Client, TokenEndpoint, TokenSet};
+//! # async fn build_and_use(endpoint: TokenEndpoint, tokens: TokenSet) -> Result<(), oath::Error> {
+//! let oauth = OAuth2Client::from_authorization_code(
+//!     endpoint,
+//!     "https://api.example.com/".parse().unwrap(),
+//!     tokens,
+//! )?;
+//!
+//! // Reads like normal api-client code; refresh is automatic.
+//! let widgets = oauth.get("/widgets").send().await?;
+//! # let _ = widgets;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! Concurrent calls collapse to one `/token` round-trip:
+//! [`OAuth2Client::ensure_fresh`] takes a `tokio::sync::Mutex`,
+//! double-checks the token after acquiring it, and only the first
+//! caller actually refreshes — the rest reuse the freshly-installed
+//! [`AccessToken`] from the `ApiClient`'s `ArcSwap` slot.
+//!
+//! For server-side revocation (a 401 from a token the client still
+//! thinks is fresh), call [`OAuth2Client::refresh`] explicitly and
+//! retry. There's no automatic 401-retry layer; see the README for the
+//! reasoning.
 
 use std::sync::Arc;
 use std::time::Duration;
