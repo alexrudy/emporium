@@ -22,7 +22,6 @@ mod auth;
 mod config;
 mod embed;
 mod handlers;
-mod middleware;
 mod state;
 mod templates;
 mod user;
