@@ -1,6 +1,7 @@
 //! Errors raised by the server-feature handlers.
 
 use std::error::Error as StdError;
+use std::sync::Arc;
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -85,11 +86,10 @@ impl ServerError {
     pub fn identity<E: StdError + Send + Sync + 'static>(err: E) -> Self {
         Self::Identity(Box::new(err))
     }
-}
 
-impl IntoResponse for ServerError {
-    fn into_response(self) -> Response {
-        let status = match &self {
+    /// HTTP status code to use in server responses
+    pub fn status_code(&self) -> StatusCode {
+        match &self {
             Self::PreauthMissing | Self::PreauthCookieMissing => StatusCode::BAD_REQUEST,
             Self::MissingCallbackParam(_) => StatusCode::BAD_REQUEST,
             Self::ProviderError { .. } => StatusCode::BAD_REQUEST,
@@ -98,8 +98,16 @@ impl IntoResponse for ServerError {
             Self::Callback(_) | Self::Oauth2(_) => StatusCode::BAD_GATEWAY,
             Self::Identity(_) => StatusCode::BAD_GATEWAY,
             Self::SessionStore(_) | Self::UserStore(_) => StatusCode::INTERNAL_SERVER_ERROR,
-        };
+        }
+    }
+}
+
+impl IntoResponse for ServerError {
+    fn into_response(self) -> Response {
+        let status = self.status_code();
         tracing::warn!(error = ?self, "OAuth2 server handler error");
-        (status, status.canonical_reason().unwrap_or("error")).into_response()
+        let mut response = (status, status.canonical_reason().unwrap_or("error")).into_response();
+        response.extensions_mut().insert(Arc::new(self));
+        response
     }
 }

@@ -22,12 +22,15 @@ mod auth;
 mod config;
 mod embed;
 mod handlers;
+mod middleware;
 mod state;
 mod templates;
 mod user;
 
 use crate::state::AppState;
 use crate::user::AppUser;
+
+use self::handlers::render_errors;
 
 /// All files under `static/` are embedded into the binary and served
 /// by the [`EmbedServer`] under `/static/`.
@@ -91,6 +94,10 @@ async fn main() -> eyre::Result<()> {
         .route("/healthz", get(handlers::health))
         .route_service("/static/{*path}", static_server)
         .merge(oauth_router)
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            render_errors,
+        ))
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 
