@@ -2,16 +2,21 @@
 resolver = "2"
 members = [
     "api-client",
-    "services/b2-client",
     "bookshelf",
     "echocache",
+    "oath",
+    "ott",
+    "otunnel",
     "secret",
+    "services/b2-client",
+    "services/linode",
+    "services/mailgun",
+    "services/octocat",
+    "services/onepassword",
+    "services/registry",
+    "services/tailscale",
     "storage",
     "storage-driver",
-    "services/linode",
-    "services/octocat",
-    "services/tailscale", "services/onepassword", "services/registry", "oath",
-    "ott", "otunnel",
 ]
 
 [workspace.dependencies]
