@@ -92,8 +92,7 @@ pub struct IdClaims {
 ///    provider issued it directly to us).
 ///
 /// Verifying the signature requires fetching the provider's JWKS and
-/// checking issuer + audience claims; that lands as part of OIDC
-/// discovery support (deferred to v1.1).
+/// checking issuer + audience claims.
 pub fn parse_id_token(tokens: &TokenSet) -> Result<IdClaims, IdentityError> {
     let id_token = tokens
         .id_token

@@ -93,6 +93,7 @@ where
         state.config.same_site,
     );
 
+    tracing::debug!("redirecting to oauth provider {url}", url = url.to_string());
     let mut headers = HeaderMap::new();
     headers.append(SET_COOKIE, cookie);
 
@@ -157,7 +158,7 @@ where
         .await
         .map_err(ServerError::identity)?;
 
-    super::storage::sanitize_username(&username)?;
+    super::sanitize_username(&username)?;
 
     state
         .users
@@ -173,6 +174,7 @@ where
         .await
         .map_err(ServerError::session_store)?;
 
+    tracing::trace!("Session created: {}", session_id.as_str());
     let session_cookie = build_signed_cookie(
         &state.cookie_key,
         &state.config.cookies.session,

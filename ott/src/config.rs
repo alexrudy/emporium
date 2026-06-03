@@ -15,7 +15,10 @@ use camino::Utf8PathBuf;
 use cookie::Key;
 use eyre::{Context as _, eyre};
 use http::Uri;
-use oath::ScopeSet;
+use oath::{
+    ScopeSet,
+    provider::{ProviderEndpoints, parse_configured_uri},
+};
 use secret::Secret;
 use serde::Deserialize;
 
@@ -52,24 +55,6 @@ pub struct Config {
     /// Whether to set `Secure` on outgoing cookies. Turn `false` only
     /// for `http://localhost` development.
     pub secure_cookies: bool,
-}
-
-/// How ott resolves the provider's authorization, token, and (optional)
-/// device endpoints. Either the operator supplies an `OAUTH_ISSUER`
-/// (a discovery URL is derived from it and fetched at startup) or
-/// they wire `OAUTH_AUTH_URI` and `OAUTH_TOKEN_URI` explicitly.
-#[derive(Debug, Clone)]
-pub enum ProviderEndpoints {
-    /// Endpoints will be discovered from
-    /// `<issuer>/.well-known/openid-configuration` at startup.
-    Discover { issuer: Uri },
-    /// Endpoints are pinned at config-load time.
-    Explicit {
-        /// `authorization_endpoint`.
-        auth_uri: Uri,
-        /// `token_endpoint`.
-        token_uri: Uri,
-    },
 }
 
 impl Config {
@@ -121,41 +106,6 @@ impl Config {
             secure_cookies,
         })
     }
-}
-
-impl ProviderEndpoints {
-    fn from_provider<F>(get: &F) -> eyre::Result<Self>
-    where
-        F: Fn(&str) -> Option<String>,
-    {
-        let issuer = get("OAUTH_ISSUER");
-        let auth = get("OAUTH_AUTH_URI");
-        let token = get("OAUTH_TOKEN_URI");
-        match (issuer, auth, token) {
-            (Some(raw), _, _) => {
-                let uri = parse_uri(&raw, "OAUTH_ISSUER")?;
-                Ok(ProviderEndpoints::Discover { issuer: uri })
-            }
-            (None, Some(auth_raw), Some(token_raw)) => {
-                let auth_uri = parse_uri(&auth_raw, "OAUTH_AUTH_URI")?;
-                let token_uri = parse_uri(&token_raw, "OAUTH_TOKEN_URI")?;
-                Ok(ProviderEndpoints::Explicit {
-                    auth_uri,
-                    token_uri,
-                })
-            }
-            _ => Err(eyre!(
-                "set OAUTH_ISSUER for `.well-known` discovery, \
-                 or set both OAUTH_AUTH_URI and OAUTH_TOKEN_URI explicitly"
-            )),
-        }
-    }
-}
-
-fn parse_uri(raw: &str, name: &str) -> eyre::Result<Uri> {
-    raw.parse::<Uri>()
-        .map_err(|source| eyre!("{source}"))
-        .with_context(|| format!("parsing env var {name}={raw:?}"))
 }
 
 impl Config {
@@ -292,11 +242,11 @@ impl RawConfig {
 
         let endpoints = match (oauth.issuer, oauth.auth_uri, oauth.token_uri) {
             (Some(raw), _, _) => ProviderEndpoints::Discover {
-                issuer: parse_uri(&raw, "oauth.issuer")?,
+                issuer: parse_configured_uri(&raw, "oauth.issuer")?,
             },
             (None, Some(auth_raw), Some(token_raw)) => ProviderEndpoints::Explicit {
-                auth_uri: parse_uri(&auth_raw, "oauth.auth_uri")?,
-                token_uri: parse_uri(&token_raw, "oauth.token_uri")?,
+                auth_uri: parse_configured_uri(&auth_raw, "oauth.auth_uri")?,
+                token_uri: parse_configured_uri(&token_raw, "oauth.token_uri")?,
             },
             _ => {
                 return Err(eyre!(

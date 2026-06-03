@@ -3,11 +3,12 @@
 use std::time::Duration;
 
 use cookie::SameSite;
+use serde::{Deserialize, Serialize};
 
 use crate::ScopeSet;
 
 /// Names of the cookies the router sets and reads.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CookieNames {
     /// Cookie holding the pre-auth session id (short-lived).
     pub preauth: String,
@@ -25,7 +26,8 @@ impl Default for CookieNames {
 }
 
 /// Per-router configuration. Most fields default to sensible values.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct OAuth2RouterConfig {
     /// Route prefix, default `/auth`. The router exposes
     /// `{prefix}/login`, `{prefix}/callback`, and `{prefix}/logout`.
@@ -58,6 +60,7 @@ pub struct OAuth2RouterConfig {
     /// `SameSite` attribute on the cookies. Default `Lax` — required so
     /// the cookie survives the provider's cross-site redirect to the
     /// callback.
+    #[serde(with = "serde_samesite")]
     pub same_site: SameSite,
 }
 
@@ -78,15 +81,58 @@ impl Default for OAuth2RouterConfig {
 }
 
 impl OAuth2RouterConfig {
-    pub(crate) fn login_path(&self) -> String {
+    /// Returns the login path, e.g. `/auth/login`.
+    pub fn login_path(&self) -> String {
         format!("{}/login", self.route_prefix)
     }
 
-    pub(crate) fn callback_path(&self) -> String {
+    /// Returns the callback path, e.g. `/auth/callback`.
+    pub fn callback_path(&self) -> String {
         format!("{}/callback", self.route_prefix)
     }
 
-    pub(crate) fn logout_path(&self) -> String {
+    /// Returns the logout path, e.g. `/auth/logout`.
+    pub fn logout_path(&self) -> String {
         format!("{}/logout", self.route_prefix)
+    }
+}
+
+mod serde_samesite {
+    use cookie::SameSite;
+
+    pub(super) fn deserialize<'de, D>(deserializer: D) -> Result<SameSite, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct SameSiteVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for SameSiteVisitor {
+            type Value = SameSite;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a valid SameSite value")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                match value.to_ascii_lowercase().as_str() {
+                    "lax" => Ok(SameSite::Lax),
+                    "strict" => Ok(SameSite::Strict),
+                    "none" => Ok(SameSite::None),
+                    _ => Err(E::invalid_value(serde::de::Unexpected::Str(value), &self)),
+                }
+            }
+        }
+
+        deserializer.deserialize_str(SameSiteVisitor)
+    }
+
+    pub(super) fn serialize<S>(value: &SameSite, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&value.to_string().to_ascii_lowercase())
     }
 }

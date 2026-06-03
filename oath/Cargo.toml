@@ -39,6 +39,8 @@ server = [
     "dep:camino",
     "dep:cookie",
     "dep:dashmap",
+]
+json-file-user-store = [
     "dep:storage",
     "dep:storage-driver",
 ]

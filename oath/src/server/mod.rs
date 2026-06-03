@@ -22,6 +22,8 @@ mod error;
 mod handlers;
 mod identity;
 mod session;
+
+#[cfg(feature = "json-file-user-store")]
 mod storage;
 mod users;
 
@@ -39,7 +41,10 @@ pub use self::error::{BoxError, ServerError};
 pub use self::handlers::is_user_denied;
 pub use self::identity::{IdClaims, Identity, IdentityError, IdentityResolver, parse_id_token};
 pub use self::session::{InMemorySessionStore, SessionData, SessionId, SessionStore};
-pub use self::storage::{JsonFileUserStore, sanitize_username};
+
+#[cfg(feature = "json-file-user-store")]
+pub use self::storage::JsonFileUserStore;
+
 pub use self::users::UserStore;
 
 use self::handlers::RouterState;
@@ -173,4 +178,37 @@ where
             .route(&self.config.logout_path(), post(handlers::logout::<S, U>))
             .layer(Extension(state))
     }
+}
+
+/// Reject usernames that could escape the configured path prefix.
+///
+/// Rejects: empty strings, strings longer than 255 bytes, any character
+/// that is `is_control()` or one of `/`, `\\`, `\0`, and the literal
+/// path-traversal tokens `.`, `..`. A literal `..` substring anywhere
+/// in the name is also rejected.
+pub fn sanitize_username(username: &str) -> Result<(), ServerError> {
+    if username.is_empty() {
+        return Err(ServerError::InvalidUsername("empty"));
+    }
+    if username.len() > 255 {
+        return Err(ServerError::InvalidUsername("too long"));
+    }
+    if username == "." || username == ".." {
+        return Err(ServerError::InvalidUsername("path traversal"));
+    }
+    if username.contains("..") {
+        return Err(ServerError::InvalidUsername("embedded `..`"));
+    }
+    for c in username.chars() {
+        // Check the specific path-separator set first so a `\0` is
+        // reported as "path separator" rather than the less-specific
+        // "control character".
+        if matches!(c, '/' | '\\' | '\0') {
+            return Err(ServerError::InvalidUsername("path separator"));
+        }
+        if c.is_control() {
+            return Err(ServerError::InvalidUsername("control character"));
+        }
+    }
+    Ok(())
 }

@@ -9,13 +9,13 @@ use std::sync::Arc;
 use axum::Router;
 use axum::routing::get;
 use eyre::Context as _;
+use oath::provider::ProviderEndpoints;
 use oath::server::{InMemorySessionStore, JsonFileUserStore, OAuth2Router};
 use oath::{ProviderMetadata, Scope, ScopeSet, TokenEndpoint};
 use rust_embed::Embed;
 use storage::LocalDriver;
 use tower_http::trace::TraceLayer;
 
-use crate::config::ProviderEndpoints;
 use crate::embed::EmbedServer;
 
 mod auth;

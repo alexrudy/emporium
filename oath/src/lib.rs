@@ -123,6 +123,7 @@ pub mod endpoint;
 pub mod error;
 pub mod grant;
 pub mod pkce;
+pub mod provider;
 pub mod scope;
 #[cfg(feature = "server")]
 pub mod server;

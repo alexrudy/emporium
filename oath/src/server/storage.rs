@@ -73,43 +73,10 @@ where
     }
 
     fn path_for(&self, username: &str) -> Result<Utf8PathBuf, ServerError> {
-        sanitize_username(username)?;
+        super::sanitize_username(username)?;
         let file = format!("{username}.json");
         Ok(self.prefix.join(file))
     }
-}
-
-/// Reject usernames that could escape the configured path prefix.
-///
-/// Rejects: empty strings, strings longer than 255 bytes, any character
-/// that is `is_control()` or one of `/`, `\\`, `\0`, and the literal
-/// path-traversal tokens `.`, `..`. A literal `..` substring anywhere
-/// in the name is also rejected.
-pub fn sanitize_username(username: &str) -> Result<(), ServerError> {
-    if username.is_empty() {
-        return Err(ServerError::InvalidUsername("empty"));
-    }
-    if username.len() > 255 {
-        return Err(ServerError::InvalidUsername("too long"));
-    }
-    if username == "." || username == ".." {
-        return Err(ServerError::InvalidUsername("path traversal"));
-    }
-    if username.contains("..") {
-        return Err(ServerError::InvalidUsername("embedded `..`"));
-    }
-    for c in username.chars() {
-        // Check the specific path-separator set first so a `\0` is
-        // reported as "path separator" rather than the less-specific
-        // "control character".
-        if matches!(c, '/' | '\\' | '\0') {
-            return Err(ServerError::InvalidUsername("path separator"));
-        }
-        if c.is_control() {
-            return Err(ServerError::InvalidUsername("control character"));
-        }
-    }
-    Ok(())
 }
 
 #[async_trait::async_trait]
@@ -161,6 +128,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::server::sanitize_username;
+
     use super::*;
 
     #[test]

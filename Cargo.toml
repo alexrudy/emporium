@@ -11,7 +11,7 @@ members = [
     "services/linode",
     "services/octocat",
     "services/tailscale", "services/onepassword", "services/registry", "oath",
-    "ott",
+    "ott", "otunnel",
 ]
 
 [workspace.dependencies]
@@ -23,8 +23,11 @@ base64 = "0.22"
 cookie = "0.18"
 bytes = "1"
 camino = { version = "1", features = [] }
+chateau = { version = "0.3" }
 chrono = { version = "0.4", features = [] }
 chrono-tz = "0.10.4"
+config = { version = "0.15.19", features = ["toml", "json"] }
+clap = { version = "*", features = ["derive"]}
 dashmap = "6"
 data-encoding = "2.10.0"
 eyre = "0.6"
@@ -34,6 +37,7 @@ http = "1"
 http-body = "1"
 http-body-util = "*"
 hyper = "1"
+hyproxy = "*"
 jaws = { version = "1.0.3", features = ["rand", "spki", "der"] }
 indoc = "2"
 minijinja = { version = "2", features = ["loader"] }
