@@ -17,7 +17,7 @@ eyre.workspace = true
 http.workspace = true
 minijinja.workspace = true
 mime_guess.workspace = true
-oath = { path = "../oath", features = ["tls-ring", "server"] }
+oath = { path = "../oath", features = ["tls-ring", "server", "json-file-user-store"] }
 rust-embed.workspace = true
 secret = { path = "../secret" }
 serde = { workspace = true, features = ["derive"] }

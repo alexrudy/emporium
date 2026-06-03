@@ -57,7 +57,7 @@ impl Default for SessionsConfig {
         Self {
             ttl: chrono::Duration::hours(48),
             key: data_encoding::BASE64
-                .encode(&Key::generate().master())
+                .encode(Key::generate().master())
                 .into(),
         }
     }

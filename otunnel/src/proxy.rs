@@ -78,7 +78,7 @@ where
                 return connections
                     .call(req)
                     .await
-                    .map(|response| response.map(|incoming| Body::new(incoming)));
+                    .map(|response| response.map(Body::new));
             }
 
             let return_to = parts

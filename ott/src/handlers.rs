@@ -104,21 +104,21 @@ pub async fn render_errors(
         let location = "/login";
         if is_htmx {
             let mut response = StatusCode::NO_CONTENT.into_response();
-            if let Ok(value) = HeaderValue::from_str(&location) {
+            if let Ok(value) = HeaderValue::from_str(location) {
                 response
                     .headers_mut()
                     .insert(HeaderName::from_static("hx-redirect"), value);
             }
             return response;
         }
-        return Redirect::to(&location).into_response();
+        return Redirect::to(location).into_response();
     }
 
     // HTMX swaps responses into a fragment target, so a full page would be wrong.
     if is_htmx {
         let body = format!(
             "<div class=\"alert alert-danger\" role=\"alert\">{}</div>",
-            html_escape(&&error.to_string())
+            html_escape(&error.to_string())
         );
         return (status, Html(body)).into_response();
     }

@@ -193,10 +193,9 @@ impl From<crate::client::TailscaleAPIError> for TailscaleError {
     fn from(err: crate::client::TailscaleAPIError) -> Self {
         use crate::client::TailscaleAPIError;
         match err {
-            TailscaleAPIError::RequestError(e) => Self::api(
-                std::io::Error::new(std::io::ErrorKind::Other, e),
-                "request failed",
-            ),
+            TailscaleAPIError::RequestError(e) => {
+                Self::api(std::io::Error::other(e), "request failed")
+            }
             TailscaleAPIError::BodyError(e) => Self::api(e, "response body error"),
         }
     }
