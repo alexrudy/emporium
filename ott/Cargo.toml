@@ -1,0 +1,34 @@
+[package]
+name = "ott"
+version = "0.1.0"
+edition = "2024"
+description = "OAuth Test Tool — a reference axum app for the oath crate"
+publish = false
+
+[dependencies]
+axum.workspace = true
+base64.workspace = true
+camino.workspace = true
+chrono = { workspace = true, features = ["serde", "clock"] }
+chrono-tz.workspace = true
+cookie.workspace = true
+data-encoding.workspace = true
+eyre.workspace = true
+http.workspace = true
+minijinja.workspace = true
+mime_guess.workspace = true
+oath = { path = "../oath", features = ["tls-ring", "server", "json-file-user-store"] }
+rust-embed.workspace = true
+secret = { path = "../secret" }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+storage = { path = "../storage" }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "fs"] }
+toml.workspace = true
+tower.workspace = true
+tower-http = { workspace = true, features = ["trace"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true

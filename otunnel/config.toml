@@ -1,0 +1,35 @@
+[oath]
+# OAuth2 scopes to request. `openid` is required for the id_token-based
+# identity resolver; ott adds it defensively if you forget. Default:
+# "openid email profile".
+scopes = "openid email profile"
+
+secure_cookies = false
+
+[provider]
+# Required: client credentials issued by the provider.
+client_id = "otunnel"
+client_secret = ""
+
+# Display name shown on the "Sign in with X" button. Default: "OAuth".
+provider_name = "Bastion"
+
+# Public origin the redirect URI lives under. Combined with
+# `/auth/callback` to form the URL you register with the provider.
+# Default: "http://127.0.0.1:3000".
+external_origin = "http://127.0.0.1:3030"
+
+[provider.endpoints]
+# Provider endpoints: set EITHER `issuer` (discovery — recommended for
+# OIDC providers; ott fetches <issuer>/.well-known/openid-configuration
+# at startup) OR both `auth_uri` and `token_uri` explicitly.
+# issuer = "https://accounts.google.com"
+auth_uri  = "http://localhost:3000/api/oauth/authorize"
+token_uri = "http://localhost:3000/api/oauth/token"
+
+[server]
+# Where to bind the HTTP listener. Default: "127.0.0.1:3000".
+bind_addr = "127.0.0.1:3030"
+
+[sessions]
+key = "czQckxOIiK4pUqc2z1XsaG+YLSWg+cv7p3PueCMkx3ByjchuoGbh5G+E/NS0IlNeSKUAnNljfaHsJ9fcvpCFhQ=="

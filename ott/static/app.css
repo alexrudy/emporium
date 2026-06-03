@@ -1,0 +1,10 @@
+/* Small visual tweaks layered on top of Bootstrap. */
+
+main.container {
+  max-width: 920px;
+}
+
+pre.card-body code {
+  white-space: pre-wrap;
+  word-break: break-word;
+}

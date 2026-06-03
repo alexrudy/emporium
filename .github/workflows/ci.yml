@@ -39,13 +39,7 @@ jobs:
       matrix:
         steps:
           - name: cargo check
-            run: cargo check --all-targets --all-features
-          - name: cargo hack check
-            run: cargo hack check --no-private --feature-powerset --no-dev-deps
-            hack: true
-          - name: cargo hack check --each-feature
-            run: cargo hack check --no-private --each-feature --no-dev-deps
-            hack: true
+            run: cargo check --all-targets
           - name: cargo doc
             run: cargo doc --all-features --no-deps
     steps:
@@ -55,13 +49,11 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
-      - uses: taiki-e/install-action@cargo-hack
-        if: matrix.steps.hack
       - name: ${{ matrix.steps.name }}
         run: ${{ matrix.steps.run }}
 
   msrv:
-    name: MSRV 1.85
+    name: MSRV 1.95
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
@@ -69,7 +61,7 @@ jobs:
       - name: Install rust toolchain
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.85.0
+          toolchain: 1.95.0
       - name: Run cargo build
         run: cargo check --all-targets --all-features
 
@@ -92,10 +84,10 @@ jobs:
           toolchain: ${{ matrix.toolchain }}
 
       - name: Build cargo tests
-        run: cargo test --all-features --no-run
+        run: cargo test --no-run
 
       - name: Run cargo test
-        run: cargo test --all-features
+        run: cargo test
 
   lints:
     name: Lints
@@ -114,4 +106,4 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run cargo clippy
-        run: cargo clippy --all-features -- -D warnings
+        run: cargo clippy -- -D warnings

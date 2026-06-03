@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{{ user.display_name or user.sub }}{% endblock %}
+{% block nav_actions %}
+  <form method="POST" action="/auth/logout" class="d-inline m-0">
+    <button type="submit" class="btn btn-outline-secondary btn-sm">Sign out</button>
+  </form>
+{% endblock %}
+{% block content %}
+<div class="row">
+  <div class="col">
+    <h1 class="h3">Signed in as {{ user.display_name or user.sub }}</h1>
+    <p class="text-secondary">You can sign out from the button at the top right.</p>
+  </div>
+</div>
+<div class="row mt-4 g-3">
+  <div class="col-md-5">
+    <div class="card shadow-sm h-100">
+      <div class="card-header">Identity</div>
+      <ul class="list-group list-group-flush">
+        <li class="list-group-item">
+          <strong>Subject:</strong>
+          <code>{{ user.sub }}</code>
+        </li>
+        <li class="list-group-item">
+          <strong>Email:</strong>
+          {{ user.email or "—" }}
+          {% if user.email_verified %}
+            <span class="badge text-bg-success ms-1">verified</span>
+          {% elif user.email %}
+            <span class="badge text-bg-warning ms-1">unverified</span>
+          {% endif %}
+        </li>
+        <li class="list-group-item">
+          <strong>First seen:</strong> {{ user.created_at }}
+        </li>
+        <li class="list-group-item">
+          <strong>Last login:</strong> {{ user.last_login_at }}
+        </li>
+      </ul>
+    </div>
+  </div>
+  <div class="col-md-7">
+    <div class="card shadow-sm h-100">
+      <div class="card-header">Stored record (raw)</div>
+      <pre class="card-body mb-0"><code>{{ user_json }}</code></pre>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,55 @@
+[package]
+name = "oath"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+api-client.path = "../api-client"
+secret.path = "../secret"
+base64.workspace = true
+chrono.workspace = true
+http.workspace = true
+http-body-util.workspace = true
+hyperdriver.workspace = true
+rand.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+serde_urlencoded.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["time", "sync"] }
+tower = { workspace = true, features = ["util"] }
+tracing.workspace = true
+
+# Optional deps for the `server` feature.
+async-trait = { workspace = true, optional = true }
+axum = { workspace = true, optional = true }
+camino = { workspace = true, optional = true }
+cookie = { workspace = true, optional = true, features = ["signed", "private"] }
+dashmap = { workspace = true, optional = true }
+storage = { path = "../storage", optional = true }
+storage-driver = { path = "../storage-driver", optional = true }
+
+[features]
+tls-ring = ["api-client/tls-ring", "hyperdriver/tls-ring"]
+tls-aws-lc = ["api-client/tls-aws-lc", "hyperdriver/tls-aws-lc"]
+server = [
+    "dep:async-trait",
+    "dep:axum",
+    "dep:camino",
+    "dep:cookie",
+    "dep:dashmap",
+]
+json-file-user-store = [
+    "dep:storage",
+    "dep:storage-driver",
+]
+
+[dev-dependencies]
+bytes.workspace = true
+hyperdriver = { workspace = true, features = ["tls-ring"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
+url.workspace = true
+
+[lints]
+workspace = true
