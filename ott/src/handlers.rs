@@ -69,12 +69,11 @@ const HX_REQUEST: &str = "hx-request";
 
 /// Top-level response-rendering middleware.
 ///
-/// Handlers and extractors return [`Error`], whose `IntoResponse` stashes it in
+/// Handlers and extractors return [`ServerError`], whose `IntoResponse` stashes it in
 /// the response extensions with only a status code (see
 /// `Error::into_response`). This layer removes it and renders the presentation
 /// that fits the request:
 ///
-/// * `/api/*` → the canonical JSON body (`Error::as_json_response`).
 /// * Unauthenticated (`401`) navigation → redirect to `/login` carrying a
 ///   `return_to`; for HTMX requests an `HX-Redirect` header is used instead so
 ///   the browser performs a full-page navigation.

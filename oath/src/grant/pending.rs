@@ -1,7 +1,6 @@
 //! The pre-auth bundle carried across the authorization redirect.
 
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
 
 use crate::endpoint::TokenEndpoint;
 use crate::error::Error;
@@ -53,7 +52,7 @@ impl PendingAuthorization {
 /// Split out from [`Error`] so HTTP handlers can map state mismatches
 /// (likely CSRF or a stale session) to a 400 with a generic message,
 /// while still propagating real exchange failures.
-#[derive(Debug, Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum CallbackError {
     /// The `state` returned by the authorization server didn't match
     /// the value we sent. Indicates a CSRF attack or a stale callback.

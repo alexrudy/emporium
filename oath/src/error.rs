@@ -7,10 +7,9 @@
 use std::fmt;
 
 use serde::Deserialize;
-use thiserror::Error;
 
 /// Errors produced by the `oath` crate.
-#[derive(Debug, Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// An error from the underlying HTTP client.
     #[error(transparent)]
@@ -74,7 +73,7 @@ pub enum Error {
 ///
 /// The `error` field carries one of the well-known codes, with a free-form
 /// `Other` variant for forward compatibility with provider-specific codes.
-#[derive(Debug, Clone, Deserialize, Error)]
+#[derive(Debug, Clone, Deserialize, thiserror::Error)]
 pub struct TokenErrorResponse {
     /// The error code returned by the server.
     #[serde(rename = "error")]
