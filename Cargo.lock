@@ -862,6 +862,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "formdata"
+version = "0.1.0"
+dependencies = [
+ "rand 0.9.4",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
 name = "fs_extra"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1582,6 +1591,23 @@ name = "log"
 version = "0.4.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "113b30b4cd05f7c06868fdb2854f66a7b9fece9a48425351cd532e810d74024f"
+
+[[package]]
+name = "mailgun"
+version = "0.1.0"
+dependencies = [
+ "api-client",
+ "clap",
+ "formdata",
+ "http",
+ "hyperdriver 0.12.3",
+ "secret",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
 
 [[package]]
 name = "matchers"
