@@ -3,6 +3,7 @@ name = "tailscale"
 version = "0.9.0"
 edition = "2021"
 license = "MIT"
+publish = false
 
 [dependencies]
 api-client.path = "../../api-client"
