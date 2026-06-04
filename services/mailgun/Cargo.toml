@@ -2,8 +2,26 @@
 name = "mailgun"
 version = "0.1.0"
 edition = "2024"
+publish = false
 
 [dependencies]
+api-client.path = "../../api-client"
+formdata.path = "../../formdata"
+http.workspace = true
+hyperdriver.workspace = true
+secret.path = "../../secret"
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+clap.workspace = true
+tokio.workspace = true
+
+[features]
+tls-ring = ["api-client/tls-ring", "hyperdriver/tls-ring"]
+tls-aws-lc = ["api-client/tls-aws-lc", "hyperdriver/tls-aws-lc"]
 
 [lints]
 workspace = true

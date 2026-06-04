@@ -3,7 +3,7 @@ resolver = "2"
 members = [
     "api-client",
     "bookshelf",
-    "echocache",
+    "echocache", "formdata",
     "oath",
     "ott",
     "otunnel",
