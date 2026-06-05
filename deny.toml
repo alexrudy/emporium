@@ -19,6 +19,7 @@ allow = [
     "Unicode-3.0",
     "BSD-3-Clause",
     # "OpenSSL",
+    "Zlib"
 ]
 confidence-threshold = 0.8
 
