@@ -5,6 +5,13 @@ nightly := "nightly"
 msrv := "1.90"
 rust := env("RUSTUP_TOOLCHAIN", "stable")
 
+# TLS crypto backend to select when *running* tests. Many crates pull in rustls
+# via hyperdriver, which needs exactly one backend: with none selected chateau
+# fails to compile, and with both (as `--all-features` enables) rustls panics at
+# runtime because it cannot pick a CryptoProvider. Override per run, e.g.
+# `just tls=tls-aws-lc test`.
+tls := env("EMPORIUM_TLS", "tls-ring")
+
 # Run all checks
 all: fmt check-all deny clippy examples docs test machete udeps msrv
     @echo "All checks passed 🍻"
@@ -55,14 +62,18 @@ msrv:
 
 
 alias t := test
-# Run cargo tests
-test:
-    cargo +{{rust}} test --all-features --no-run
-    cargo +{{rust}} test --all-features
+# Run the test suite with one TLS backend (see `tls`); args filter by test name.
+test *args:
+    cargo +{{rust}} test --workspace --features {{tls}} --no-run {{args}}
+    cargo +{{rust}} test --workspace --features {{tls}} {{args}}
 
-# Run coverage tests
+# Test a single TLS-dependent crate, e.g. `just test-crate oath`.
+test-crate crate *args:
+    cargo +{{rust}} test -p {{crate}} --features {{tls}} {{args}}
+
+# Run coverage tests (single TLS backend, see `tls`)
 coverage:
-    cargo +{{rust}} tarpaulin -o html --all-features
+    cargo +{{rust}} tarpaulin -o html --workspace --features {{tls}}
 
 alias timing := timings
 # Compile with timing checks
