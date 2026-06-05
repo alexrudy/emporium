@@ -39,9 +39,9 @@ jobs:
       matrix:
         steps:
           - name: cargo check
-            run: cargo check --all-targets
+            run: just check
           - name: cargo doc
-            run: cargo doc --all-features --no-deps
+            run: just doc
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
@@ -49,6 +49,7 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
+      - uses: extractions/setup-just@v4
       - name: ${{ matrix.steps.name }}
         run: ${{ matrix.steps.run }}
 
@@ -83,11 +84,13 @@ jobs:
         with:
           toolchain: ${{ matrix.toolchain }}
 
+      - uses: extractions/setup-just@v4
+
       - name: Build cargo tests
-        run: cargo test --no-run
+        run: just test-build
 
       - name: Run cargo test
-        run: cargo test
+        run: just test-run
 
   lints:
     name: Lints

@@ -3,6 +3,7 @@ name = "ott"
 version = "0.1.0"
 edition = "2024"
 description = "OAuth Test Tool — a reference axum app for the oath crate"
+license = "MIT"
 publish = false
 
 [dependencies]
