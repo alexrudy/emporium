@@ -130,7 +130,7 @@ dependencies = [
  "http-body",
  "http-body-util",
  "hyper",
- "hyperdriver 0.12.3",
+ "hyperdriver",
  "pin-project",
  "secret",
  "serde",
@@ -271,7 +271,7 @@ dependencies = [
  "hex",
  "http",
  "http-body-util",
- "hyperdriver 0.12.3",
+ "hyperdriver",
  "mime",
  "percent-encoding",
  "sentry",
@@ -402,7 +402,7 @@ dependencies = [
  "pin-project",
  "rustls",
  "rustls-native-certs",
- "socket2 0.6.4",
+ "socket2",
  "thiserror",
  "tokio",
  "tokio-rustls",
@@ -1263,31 +1263,6 @@ dependencies = [
 
 [[package]]
 name = "hyperdriver"
-version = "0.11.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "de0c6f548d2c838ff7244f217a504713ea45acc383469ad10eafa0bb57f3f359"
-dependencies = [
- "bytes",
- "camino",
- "futures-core",
- "futures-util",
- "http",
- "http-body",
- "http-body-util",
- "hyper",
- "ouroboros",
- "parking_lot",
- "pin-project",
- "socket2 0.5.10",
- "thiserror",
- "tokio",
- "tower",
- "tower-http",
- "tracing",
-]
-
-[[package]]
-name = "hyperdriver"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8fee0eec17ee876113efd9f64c2171b5058388db90e62cf3ce18a1327df9063b"
@@ -1314,14 +1289,15 @@ dependencies = [
 
 [[package]]
 name = "hyproxy"
-version = "0.11.2"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37845afc3d98c3a97956d9feb98a139fdf3a10a37feff4097b937799c375bf3a"
+checksum = "8a73405ea066858bab0c3336afd340ac6fa37cdbae4bf5b9f175364b6142fc15"
 dependencies = [
  "bytes",
+ "chateau",
  "http",
  "hyper",
- "hyperdriver 0.11.2",
+ "hyperdriver",
  "nom",
  "pin-project-lite",
  "thiserror",
@@ -1610,7 +1586,7 @@ dependencies = [
  "api-client",
  "futures",
  "http",
- "hyperdriver 0.12.3",
+ "hyperdriver",
  "serde",
  "serde_json",
  "static_assertions",
@@ -1653,7 +1629,7 @@ dependencies = [
  "clap",
  "formdata",
  "http",
- "hyperdriver 0.12.3",
+ "hyperdriver",
  "secret",
  "serde",
  "serde_json",
@@ -1818,7 +1794,7 @@ dependencies = [
  "dashmap",
  "http",
  "http-body-util",
- "hyperdriver 0.12.3",
+ "hyperdriver",
  "rand 0.9.4",
  "secret",
  "serde",
@@ -1843,7 +1819,7 @@ dependencies = [
  "chrono",
  "eyre",
  "http",
- "hyperdriver 0.12.3",
+ "hyperdriver",
  "jaws",
  "serde",
  "serde_json",
@@ -1874,7 +1850,7 @@ dependencies = [
  "api-client",
  "camino",
  "http",
- "hyperdriver 0.12.3",
+ "hyperdriver",
  "percent-encoding",
  "serde",
  "thiserror",
@@ -1949,7 +1925,7 @@ dependencies = [
  "eyre",
  "http",
  "hyper",
- "hyperdriver 0.12.3",
+ "hyperdriver",
  "hyproxy",
  "oath",
  "secret",
@@ -2371,7 +2347,7 @@ dependencies = [
  "hex",
  "http-body-util",
  "hyper",
- "hyperdriver 0.12.3",
+ "hyperdriver",
  "serde",
  "serde_json",
  "sha2",
@@ -2873,16 +2849,6 @@ checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 
 [[package]]
 name = "socket2"
-version = "0.5.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e22376abed350d73dd1cd119b57ffccad95b4e585a7cda43e286245ce23c0678"
-dependencies = [
- "libc",
- "windows-sys 0.52.0",
-]
-
-[[package]]
-name = "socket2"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "52d1cfed4120b4d927bf7c0f86d2087a4a7d6027c906d9f9d525a80573b9be51"
@@ -2998,7 +2964,7 @@ dependencies = [
  "api-client",
  "camino",
  "http",
- "hyperdriver 0.12.3",
+ "hyperdriver",
  "indoc",
  "serde",
  "thiserror",
@@ -3012,7 +2978,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.2",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
@@ -3109,7 +3075,7 @@ dependencies = [
  "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
- "socket2 0.6.4",
+ "socket2",
  "tokio-macros",
  "windows-sys 0.61.2",
 ]
