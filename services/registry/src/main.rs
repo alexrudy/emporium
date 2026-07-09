@@ -65,7 +65,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>>
 
     // Build the registry service
     let app = RegistryBuilder::new()
-        .storage(storage.into())
+        .storage(storage)
         .bucket(bucket)
         .build();
 

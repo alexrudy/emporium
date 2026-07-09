@@ -6,8 +6,10 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use bytes::Bytes;
+use serde::Deserialize;
 use uuid::Uuid;
 
+use crate::Repository;
 use crate::error::{RegistryError, RegistryResult};
 use crate::storage::RegistryStorage;
 
@@ -20,19 +22,35 @@ pub fn router() -> Router<RegistryStorage> {
             "/v2/{name}/blobs/{digest}",
             get(get_blob).head(head_blob).delete(delete_blob),
         )
+        .route(
+            "/v2/{org}/{name}/blobs/{digest}",
+            get(get_blob).head(head_blob).delete(delete_blob),
+        )
         .route("/v2/{name}/blobs/uploads/", post(start_blob_upload))
+        .route("/v2/{org}/{name}/blobs/uploads/", post(start_blob_upload))
         .route(
             "/v2/{name}/blobs/uploads/{uuid}",
             put(complete_blob_upload).delete(cancel_blob_upload),
         )
+        .route(
+            "/v2/{org}/{name}/blobs/uploads/{uuid}",
+            put(complete_blob_upload).delete(cancel_blob_upload),
+        )
+}
+
+#[derive(Debug, Deserialize)]
+struct BlobPath {
+    #[serde(flatten)]
+    repo: Repository,
+    digest: String,
 }
 
 /// Get a blob
 async fn get_blob(
     State(storage): State<RegistryStorage>,
-    Path((name, digest)): Path<(String, String)>,
+    Path(BlobPath { repo, digest }): Path<BlobPath>,
 ) -> RegistryResult<Response> {
-    validate_repository(&name)?;
+    repo.validate()?;
     validate_digest(&digest)?;
 
     let data = storage.get_blob(&digest).await?;
@@ -48,9 +66,9 @@ async fn get_blob(
 /// Check if a blob exists
 async fn head_blob(
     State(storage): State<RegistryStorage>,
-    Path((name, digest)): Path<(String, String)>,
+    Path(BlobPath { repo, digest }): Path<BlobPath>,
 ) -> RegistryResult<Response> {
-    validate_repository(&name)?;
+    repo.validate()?;
     validate_digest(&digest)?;
 
     if storage.blob_exists(&digest).await? {
@@ -67,9 +85,9 @@ async fn head_blob(
 /// Delete a blob
 async fn delete_blob(
     State(storage): State<RegistryStorage>,
-    Path((name, digest)): Path<(String, String)>,
+    Path(BlobPath { repo, digest }): Path<BlobPath>,
 ) -> RegistryResult<StatusCode> {
-    validate_repository(&name)?;
+    repo.validate()?;
     validate_digest(&digest)?;
 
     storage.delete_blob(&digest).await?;
@@ -77,12 +95,11 @@ async fn delete_blob(
 }
 
 /// Start a blob upload session
-async fn start_blob_upload(Path(name): Path<String>) -> RegistryResult<Response> {
-    validate_repository(&name)?;
-
+async fn start_blob_upload(Path(repo): Path<Repository>) -> RegistryResult<Response> {
+    let fullname = repo.validate()?;
     // Generate a UUID for the upload session
     let session_id = Uuid::new_v4();
-    let location = format!("/v2/{}/blobs/uploads/{}", name, session_id);
+    let location = format!("/v2/{}/blobs/uploads/{}", fullname, session_id);
 
     Ok((
         StatusCode::ACCEPTED,
@@ -94,14 +111,23 @@ async fn start_blob_upload(Path(name): Path<String>) -> RegistryResult<Response>
         .into_response())
 }
 
+#[derive(Debug, Deserialize)]
+struct BlobUploadComplete {
+    #[serde(flatten)]
+    repo: Repository,
+
+    #[expect(dead_code)]
+    uuid: Uuid,
+}
+
 /// Complete a blob upload
 async fn complete_blob_upload(
     State(storage): State<RegistryStorage>,
-    Path((name, _uuid)): Path<(String, String)>,
+    Path(BlobUploadComplete { repo, .. }): Path<BlobUploadComplete>,
     headers: HeaderMap,
     body: Bytes,
 ) -> RegistryResult<Response> {
-    validate_repository(&name)?;
+    let fullname = repo.validate()?;
 
     // Get the digest from query parameter or header
     let digest = headers
@@ -114,7 +140,7 @@ async fn complete_blob_upload(
     // Store the blob
     storage.put_blob(digest, &body).await?;
 
-    let location = format!("/v2/{}/blobs/{}", name, digest);
+    let location = format!("/v2/{}/blobs/{}", fullname, digest);
 
     Ok((
         StatusCode::CREATED,
@@ -128,18 +154,10 @@ async fn complete_blob_upload(
 
 /// Cancel a blob upload
 async fn cancel_blob_upload(
-    Path((name, _uuid)): Path<(String, String)>,
+    Path(BlobUploadComplete { repo, .. }): Path<BlobUploadComplete>,
 ) -> RegistryResult<StatusCode> {
-    validate_repository(&name)?;
+    repo.validate()?;
     Ok(StatusCode::NO_CONTENT)
-}
-
-/// Validate repository name
-fn validate_repository(name: &str) -> RegistryResult<()> {
-    if name.is_empty() || name.contains("..") {
-        return Err(RegistryError::InvalidRepository(name.to_string()));
-    }
-    Ok(())
 }
 
 /// Validate digest format

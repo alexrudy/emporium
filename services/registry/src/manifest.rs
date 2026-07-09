@@ -6,8 +6,10 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use bytes::Bytes;
+use serde::Deserialize;
 use sha2::Digest;
 
+use crate::Repository;
 use crate::error::{RegistryError, RegistryResult};
 use crate::storage::RegistryStorage;
 
@@ -21,16 +23,30 @@ pub fn router() -> Router<RegistryStorage> {
                 .put(put_manifest)
                 .delete(delete_manifest),
         )
+        .route(
+            "/v2/{org}/{name}/manifests/{reference}",
+            get(get_manifest)
+                .head(head_manifest)
+                .put(put_manifest)
+                .delete(delete_manifest),
+        )
         .route("/v2/{name}/tags/list", get(list_tags))
+        .route("/v2/{org}/{name}/tags/list", get(list_tags))
+}
+
+#[derive(Debug, Deserialize)]
+struct ManifestPath {
+    #[serde(flatten)]
+    repo: Repository,
+    reference: String,
 }
 
 /// Get a manifest
 async fn get_manifest(
     State(storage): State<RegistryStorage>,
-    Path((name, reference)): Path<(String, String)>,
+    Path(ManifestPath { repo, reference }): Path<ManifestPath>,
 ) -> RegistryResult<Response> {
-    validate_repository(&name)?;
-
+    let name = repo.validate()?;
     let data = storage.get_manifest(&name, &reference).await?;
 
     // Detect manifest type from content
@@ -56,9 +72,9 @@ async fn get_manifest(
 /// Check if a manifest exists
 async fn head_manifest(
     State(storage): State<RegistryStorage>,
-    Path((name, reference)): Path<(String, String)>,
+    Path(ManifestPath { repo, reference }): Path<ManifestPath>,
 ) -> RegistryResult<Response> {
-    validate_repository(&name)?;
+    let name = repo.validate()?;
 
     let data = storage.get_manifest(&name, &reference).await?;
     let content_type = detect_manifest_type(&data);
@@ -81,12 +97,11 @@ async fn head_manifest(
 /// Put a manifest
 async fn put_manifest(
     State(storage): State<RegistryStorage>,
-    Path((name, reference)): Path<(String, String)>,
+    Path(ManifestPath { repo, reference }): Path<ManifestPath>,
     headers: HeaderMap,
     body: Bytes,
 ) -> RegistryResult<Response> {
-    validate_repository(&name)?;
-
+    let name = repo.validate()?;
     // Get content type
     let content_type = headers
         .get(header::CONTENT_TYPE)
@@ -117,9 +132,9 @@ async fn put_manifest(
 /// Delete a manifest
 async fn delete_manifest(
     State(storage): State<RegistryStorage>,
-    Path((name, reference)): Path<(String, String)>,
+    Path(ManifestPath { repo, reference }): Path<ManifestPath>,
 ) -> RegistryResult<StatusCode> {
-    validate_repository(&name)?;
+    let name = repo.validate()?;
 
     storage.delete_manifest(&name, &reference).await?;
     Ok(StatusCode::ACCEPTED)
@@ -128,9 +143,9 @@ async fn delete_manifest(
 /// List tags for a repository
 async fn list_tags(
     State(storage): State<RegistryStorage>,
-    Path(name): Path<String>,
+    Path(repo): Path<Repository>,
 ) -> RegistryResult<Json<TagList>> {
-    validate_repository(&name)?;
+    let name = repo.validate()?;
 
     let tags = storage.list_tags(&name).await?;
 
@@ -142,14 +157,6 @@ async fn list_tags(
 struct TagList {
     name: String,
     tags: Vec<String>,
-}
-
-/// Validate repository name
-fn validate_repository(name: &str) -> RegistryResult<()> {
-    if name.is_empty() || name.contains("..") {
-        return Err(RegistryError::InvalidRepository(name.to_string()));
-    }
-    Ok(())
 }
 
 /// Detect manifest type from content
