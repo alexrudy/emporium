@@ -38,3 +38,32 @@ mod storage;
 pub use ::axum::Router;
 pub use api::RegistryBuilder;
 pub use error::{RegistryError, RegistryResult};
+use serde::Deserialize;
+
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct Repository {
+    #[serde(default)]
+    pub org: Option<String>,
+    pub name: String,
+}
+
+impl Repository {
+    pub fn validate(&self) -> RegistryResult<String> {
+        let full_name = if let Some(org) = &self.org {
+            format!("{}/{}", org, self.name)
+        } else {
+            self.name.clone()
+        };
+
+        if self.name.is_empty() || self.name.contains("/") || self.name.contains("..") {
+            return Err(RegistryError::InvalidRepository(full_name));
+        }
+        if let Some(org) = &self.org
+            && (org.contains("/") || org.contains(".."))
+        {
+            return Err(RegistryError::InvalidRepository(full_name));
+        }
+
+        Ok(full_name)
+    }
+}

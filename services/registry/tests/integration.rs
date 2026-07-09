@@ -43,7 +43,7 @@ async fn test_blob_upload_and_download() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/v2/test-repo/blobs/uploads/")
+                .uri("/v2/test/repo/blobs/uploads/")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -76,7 +76,7 @@ async fn test_blob_upload_and_download() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/v2/test-repo/blobs/{}", digest))
+                .uri(format!("/v2/test/repo/blobs/{}", digest))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -105,7 +105,7 @@ async fn test_blob_head() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/v2/test-repo/blobs/uploads/")
+                .uri("/v2/test/repo/blobs/uploads/")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -133,7 +133,7 @@ async fn test_blob_head() {
         .oneshot(
             Request::builder()
                 .method("HEAD")
-                .uri(format!("/v2/test-repo/blobs/{}", digest))
+                .uri(format!("/v2/test/repo/blobs/{}", digest))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -167,7 +167,7 @@ async fn test_manifest_upload_and_download() {
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri("/v2/test-repo/manifests/latest")
+                .uri("/v2/test/repo/manifests/latest")
                 .header(
                     header::CONTENT_TYPE,
                     "application/vnd.docker.distribution.manifest.v2+json",
@@ -192,7 +192,7 @@ async fn test_manifest_upload_and_download() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/v2/test-repo/manifests/latest")
+                .uri("/v2/test/repo/manifests/latest")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -210,7 +210,7 @@ async fn test_manifest_upload_and_download() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/v2/test-repo/manifests/{}", digest))
+                .uri(format!("/v2/test/repo/manifests/{}", digest))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -248,7 +248,7 @@ async fn test_list_tags() {
             .oneshot(
                 Request::builder()
                     .method("PUT")
-                    .uri(format!("/v2/test-repo/manifests/{}", tag))
+                    .uri(format!("/v2/test/repo/manifests/{}", tag))
                     .header(
                         header::CONTENT_TYPE,
                         "application/vnd.docker.distribution.manifest.v2+json",
@@ -265,7 +265,7 @@ async fn test_list_tags() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/v2/test-repo/tags/list")
+                .uri("/v2/test/repo/tags/list")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -279,7 +279,7 @@ async fn test_list_tags() {
         .unwrap();
     let tag_list: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(tag_list["name"], "test-repo");
+    assert_eq!(tag_list["name"], "test/repo");
     let tags = tag_list["tags"].as_array().unwrap();
     assert_eq!(tags.len(), 3);
 }
@@ -292,7 +292,7 @@ async fn test_blob_not_found() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/v2/test-repo/blobs/sha256:nonexistent")
+                .uri("/v2/test/repo/blobs/sha256:nonexistent")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -310,7 +310,7 @@ async fn test_manifest_not_found() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/v2/test-repo/manifests/nonexistent")
+                .uri("/v2/test/repo/manifests/nonexistent")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -328,7 +328,7 @@ async fn test_invalid_digest() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/v2/test-repo/blobs/invalid-digest")
+                .uri("/v2/test/repo/blobs/invalid-digest")
                 .body(Body::empty())
                 .unwrap(),
         )
