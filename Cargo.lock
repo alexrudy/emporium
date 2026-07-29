@@ -2617,9 +2617,9 @@ checksum = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
 
 [[package]]
 name = "sentry"
-version = "0.48.4"
+version = "0.48.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82719d9cd9d2686541dc49875f7944ab71348edfcc6a5686414b22ea0b6d9b29"
+checksum = "d631477761f57c76148456e55e80e9a479ff3fa4c65b2b4a0c3acf1167fd4638"
 dependencies = [
  "cfg_aliases",
  "sentry-core",
@@ -2627,9 +2627,9 @@ dependencies = [
 
 [[package]]
 name = "sentry-core"
-version = "0.48.4"
+version = "0.48.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8c44ee52fa3d30581f951b57aec754ef9cd70186df5fb788367804360c48097"
+checksum = "ecf0b1a4a4e9ec88395b52e6fa4868b95564c1fa96b26a0606f5f6288a0f7149"
 dependencies = [
  "rand 0.9.4",
  "sentry-types",
@@ -2640,9 +2640,9 @@ dependencies = [
 
 [[package]]
 name = "sentry-types"
-version = "0.48.4"
+version = "0.48.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1be93ef0435a5ab91f88178fb7681249437e875d004f996ecb35be94dc99a0e0"
+checksum = "2239099d47e76857b0825a182ecdb90159add7aa1097b60247c6e7ca6bf49c6a"
 dependencies = [
  "debugid",
  "hex",
