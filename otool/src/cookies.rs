@@ -1,3 +1,5 @@
+//! Cookie handling utilities for the application.
+
 use std::{
     convert::Infallible,
     sync::{Arc, RwLock},
@@ -6,6 +8,7 @@ use std::{
 use axum::extract::FromRequestParts;
 use cookie::{Cookie, Key};
 
+/// A wrapper around [`cookie::CookieJar`] that provides thread-safe access.
 #[derive(Debug, Clone)]
 pub struct CookieJar {
     jar: Arc<RwLock<cookie::CookieJar>>,
@@ -19,7 +22,6 @@ impl CookieJar {
     }
 
     /// Returns the cookie with the given name, if it exists.
-    #[expect(dead_code)]
     pub fn get(&self, name: &str) -> Option<Cookie<'static>> {
         self.jar.read().ok().and_then(|jar| jar.get(name).cloned())
     }

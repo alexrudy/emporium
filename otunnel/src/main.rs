@@ -7,7 +7,6 @@ use chateau::client::{
     conn::{service::ClientExecutorService, transport::tcp::TcpTransport},
 };
 use clap::Parser;
-use cookie::Key;
 use eyre::Context as _;
 use http::{HeaderName, StatusCode};
 use hyperdriver::{
@@ -18,7 +17,7 @@ use hyproxy::{
     headers::{SetViaHeaderLayer, StripHopByHopLayer, via::ViaAddress},
     upgrade::ProxyUpgradeLayer,
 };
-use oath::server::OAuth2Router;
+use otool::build_router;
 use tower_http::{
     catch_panic::CatchPanicLayer, propagate_header::PropagateHeaderLayer,
     request_id::SetRequestIdLayer, sensitive_headers::SetSensitiveHeadersLayer, trace::TraceLayer,
@@ -28,15 +27,11 @@ use self::{
     config::Config,
     proxy::{ProxyLayer, ProxyRequestId},
     state::AppState,
-    user::NoOpUserStore,
 };
 
-mod auth;
 mod config;
-mod cookies;
 mod proxy;
 mod state;
-mod user;
 
 #[derive(Debug, clap::Parser)]
 struct Cli {
@@ -105,9 +100,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ))
         .layer(Http1ChecksLayer::new())
         .service(ClientExecutorService::new());
-
-    let router = build_router(&config, &state)
+    let router = build_router(&state.inner)
         .await?
+        .into_router()
         .fallback_service(service)
         .layer(middleware);
     let listener = tokio::net::TcpListener::bind(config.server.bind_addr)
@@ -127,22 +122,4 @@ fn install_tracing() {
     use tracing_subscriber::EnvFilter;
     use tracing_subscriber::fmt;
     fmt().with_env_filter(EnvFilter::from_default_env()).init();
-}
-
-async fn build_router(config: &Config, state: &AppState) -> eyre::Result<axum::Router> {
-    let endpoint = config
-        .provider
-        .provider()
-        .await
-        .wrap_err("building endpoint from configuration")?;
-
-    let oauth = OAuth2Router::new(
-        endpoint,
-        state.sessions.clone(),
-        NoOpUserStore::new(),
-        user::identity_resolver(),
-        Key::from(config.sessions.key.revealed().as_bytes()),
-    );
-
-    Ok(oauth.config(config.oath.clone()).into_router())
 }

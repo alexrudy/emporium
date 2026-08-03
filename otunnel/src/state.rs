@@ -1,27 +1,22 @@
-use std::time::Duration;
-
 use axum::extract::FromRef;
 use cookie::Key;
 use http::{
     Uri,
     uri::{Authority, Scheme},
 };
-use oath::server::InMemorySessionStore;
 
 use crate::config::Config;
 
 #[derive(Debug, Clone)]
 pub struct AppState {
-    pub config: Config,
-    pub sessions: InMemorySessionStore,
+    pub inner: otool::state::AppState,
     pub upstream: Authority,
 }
 
 impl AppState {
     pub fn new(config: Config, upstream: Authority) -> Self {
         Self {
-            config,
-            sessions: InMemorySessionStore::new(Duration::from_hours(48)),
+            inner: otool::state::AppState::new(config.oath, config.provider, config.sessions),
             upstream,
         }
     }
@@ -36,6 +31,6 @@ impl AppState {
 
 impl FromRef<AppState> for Key {
     fn from_ref(input: &AppState) -> Self {
-        Key::from(input.config.sessions.key.revealed().as_bytes())
+        Key::from(input.inner.sessions.key.revealed().as_bytes())
     }
 }

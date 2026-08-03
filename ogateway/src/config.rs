@@ -3,7 +3,6 @@ use std::{
     path::PathBuf,
 };
 
-use chateau::client::conn::transport::tcp::TcpTransportConfig;
 use config::ConfigError;
 use oath::{provider::OAuthProviderConfig, server::OAuth2RouterConfig};
 use otool::config::SessionsConfig;
@@ -15,13 +14,12 @@ pub struct Config {
     pub oath: OAuth2RouterConfig,
     pub provider: OAuthProviderConfig,
 
-    #[serde(skip, default)]
-    pub tcp: TcpTransportConfig,
-
     #[serde(default)]
     pub sessions: SessionsConfig,
     #[serde(default)]
     pub server: ServerConfig,
+
+    pub verify_route: String,
 }
 
 impl Config {
@@ -30,14 +28,14 @@ impl Config {
         let path = path.into();
         let settings = config::Config::builder()
             .add_source(config::File::from(path))
-            .add_source(config::Environment::with_prefix("OTUNNEL"))
+            .add_source(config::Environment::with_prefix("OGATEWAY"))
             .build()?;
         settings.try_deserialize()
     }
 
     pub fn from_env() -> Result<Self, ConfigError> {
         let settings = config::Config::builder()
-            .add_source(config::Environment::with_prefix("OTUNNEL"))
+            .add_source(config::Environment::with_prefix("OGATEWAY"))
             .build()?;
 
         settings.try_deserialize()

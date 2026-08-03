@@ -1856,6 +1856,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "ogateway"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "clap",
+ "config",
+ "eyre",
+ "http",
+ "oath",
+ "otool",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1905,6 +1925,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "otool"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "chrono",
+ "cookie",
+ "dashmap",
+ "data-encoding",
+ "http",
+ "oath",
+ "secret",
+ "serde",
+ "tracing",
+]
+
+[[package]]
 name = "ott"
 version = "0.1.0"
 dependencies = [
@@ -1937,22 +1974,18 @@ dependencies = [
 name = "otunnel"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "axum",
  "chateau",
- "chrono",
  "clap",
  "config",
  "cookie",
- "dashmap",
- "data-encoding",
  "eyre",
  "http",
  "hyper",
  "hyperdriver 0.12.3",
  "hyproxy",
  "oath",
- "secret",
+ "otool",
  "serde",
  "serde_json",
  "tokio",
