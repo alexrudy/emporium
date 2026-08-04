@@ -1,0 +1,25 @@
+{
+    auto_https off
+    http_port 8080
+    debug
+
+}
+localhost:8080 {
+
+    @auth path /auth/*
+    handle @auth {
+        reverse_proxy localhost:3030
+    }
+
+    handle {
+        forward_auth localhost:3030 {
+            uri /proxy/verify
+
+            @error status 403
+            handle_response @error {
+                redir * http://localhost:8080/auth/login
+            }
+        }
+    	respond "Hello, world!"
+	}
+}

@@ -33,7 +33,7 @@ impl FromRequestParts<AppState> for CurrentUser {
         let jar = CookieJar::from_request_parts(parts, state).await.unwrap();
         let cookie = jar
             .signed(
-                &state.config.oath.cookies.session,
+                &state.oauth_router.cookies.session,
                 &FromRef::from_ref(state),
             )
             .ok_or(StatusCode::UNAUTHORIZED)
@@ -41,7 +41,7 @@ impl FromRequestParts<AppState> for CurrentUser {
 
         let session_id = SessionId::from_string(cookie.value());
         let data = state
-            .sessions
+            .sessions_store
             .get(&session_id)
             .await
             .ok()

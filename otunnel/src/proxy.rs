@@ -5,10 +5,11 @@ use axum::extract::FromRequestParts;
 use axum::response::{IntoResponse, Redirect};
 use http::{Request, Response};
 use hyper::body::Incoming;
+use otool::auth::OptionalCurrentUser;
 use tower_http::request_id::{MakeRequestId, RequestId};
 use uuid::Uuid;
 
-use crate::{auth::OptionalCurrentUser, state::AppState};
+use crate::state::AppState;
 
 #[derive(Debug, Clone)]
 pub struct ProxyLayer {
@@ -64,7 +65,7 @@ where
         ProxyFuture::new(async move {
             let (mut parts, body) = req.into_parts();
             let OptionalCurrentUser(user) =
-                OptionalCurrentUser::from_request_parts(&mut parts, &state)
+                OptionalCurrentUser::from_request_parts(&mut parts, &state.inner)
                     .await
                     .unwrap();
 
@@ -89,7 +90,7 @@ where
 
             Ok(Redirect::to(&format!(
                 "{}?return_to={}",
-                state.config.oath.login_path(),
+                state.inner.oauth_router.login_path(),
                 return_to
             ))
             .into_response())

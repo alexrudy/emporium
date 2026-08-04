@@ -15,21 +15,26 @@ use serde::{Deserialize, Serialize};
 /// at callback time; they aren't part of any OIDC spec.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct AppUser {
+    /// The user's username.
     pub username: String,
 }
 
 impl AppUser {
+    /// Creates a new [`AppUser`] with the given username.
     pub fn new(username: String) -> Self {
         Self { username }
     }
 }
 
+/// A no-op user store that does nothing,
+/// and stores users in memory.
 #[derive(Default, Debug, Clone)]
 pub struct NoOpUserStore {
     users: Arc<DashSet<String>>,
 }
 
 impl NoOpUserStore {
+    /// Creates a new [`NoOpUserStore`] with an empty user set.
     pub fn new() -> Self {
         Self {
             users: Arc::new(DashSet::new()),
