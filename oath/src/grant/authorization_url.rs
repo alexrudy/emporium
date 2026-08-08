@@ -23,6 +23,7 @@ pub struct AuthorizationUrl<'a> {
     verifier: Option<PkceVerifier>,
     pkce_method: PkceMethod,
     extra: Vec<(String, String)>,
+    redirect: Option<Uri>,
 }
 
 impl<'a> AuthorizationUrl<'a> {
@@ -35,6 +36,7 @@ impl<'a> AuthorizationUrl<'a> {
             verifier: None,
             pkce_method: PkceMethod::S256,
             extra: Vec::new(),
+            redirect: None,
         }
     }
 
@@ -61,6 +63,18 @@ impl<'a> AuthorizationUrl<'a> {
     /// [`PkceVerifier::generate`]).
     pub fn with_verifier(mut self, verifier: PkceVerifier) -> Self {
         self.verifier = Some(verifier);
+        self
+    }
+
+    /// Provide a specific redirect URI (overriding the token endpoint)
+    pub fn with_redirect(mut self, redirect: Uri) -> Self {
+        self.redirect = Some(redirect);
+        self
+    }
+
+    /// Remove the redirect URI (falling back to the token endpoint).
+    pub fn without_redirect(mut self) -> Self {
+        self.redirect = None;
         self
     }
 
@@ -102,7 +116,10 @@ impl<'a> AuthorizationUrl<'a> {
         if !self.scopes.is_empty() {
             params.push(("scope", self.scopes.to_string()));
         }
-        if let Some(redirect) = self.endpoint.redirect_uri() {
+
+        if let Some(redirect) = self.redirect {
+            params.push(("redirect_uri", redirect.to_string()));
+        } else if let Some(redirect) = self.endpoint.redirect_uri() {
             params.push(("redirect_uri", redirect.to_string()));
         }
         params.push(("state", state.revealed().to_owned()));
