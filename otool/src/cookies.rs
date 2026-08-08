@@ -52,12 +52,12 @@ where
         let mut jar = cookie::CookieJar::new();
         for hv in parts.headers.get_all(http::header::COOKIE) {
             let Ok(s) = hv.to_str() else { continue };
-            for part in s.split(';').map(str::trim) {
-                if part.is_empty() {
-                    continue;
-                }
-                if let Ok(cookie) = Cookie::parse(part.to_owned()) {
-                    jar.add_original(cookie);
+            for cookie in Cookie::split_parse(s) {
+                match cookie {
+                    Ok(c) => jar.add_original(c.into_owned()),
+                    Err(e) => {
+                        tracing::warn!("Unparseable cookie: {e}");
+                    }
                 }
             }
         }
