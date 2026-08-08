@@ -1,4 +1,3 @@
-verify_route = "/proxy/verify"
 
 [oath]
 # OAuth2 scopes to request. `openid` is required for the id_token-based
@@ -32,6 +31,7 @@ token_uri = "http://localhost:3000/api/oauth/token"
 [server]
 # Where to bind the HTTP listener. Default: "127.0.0.1:3000".
 bind_addr = "127.0.0.1:3030"
+verify_route = "/proxy/verify"
 
 [sessions]
 key = "czQckxOIiK4pUqc2z1XsaG+YLSWg+cv7p3PueCMkx3ByjchuoGbh5G+E/NS0IlNeSKUAnNljfaHsJ9fcvpCFhQ=="

@@ -1,11 +1,12 @@
 //! OAuth client that works with the nginx-auth protocol
 
-use std::path::PathBuf;
+use std::{path::PathBuf, str::FromStr, sync::Arc};
 
 use axum::{response::IntoResponse, routing::get};
 use clap::Parser;
 use eyre::Context as _;
 use http::{HeaderName, StatusCode};
+use oath::server::TrustedHeader;
 use otool::{auth::OptionalCurrentUser, build_router, state::AppState};
 use systemd_connector::sockets;
 use tower_http::{
@@ -56,11 +57,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )))
         .layer(TraceLayer::new_for_http());
 
-    tracing::info!("Proxy verification at {}", config.verify_route);
-    let router = build_router(&state)
-        .await?
+    tracing::info!("Proxy verification at {}", config.server.verify_route);
+    let mut oauth_router = build_router(&state).await?;
+    if let Some(trusted_header) = &config.server.trusted_header {
+        let extract = TrustedHeader::from(
+            http::HeaderName::from_str(trusted_header).context("Invalid trusted header")?,
+        );
+        oauth_router = oauth_router.redirect(Arc::new(extract));
+    }
+    let router = oauth_router
         .into_router()
-        .route(&config.verify_route, get(handle_verify))
+        .route(&config.server.verify_route, get(handle_verify))
         .layer(middleware)
         .with_state(state);
 

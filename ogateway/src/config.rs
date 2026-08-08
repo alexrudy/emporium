@@ -18,8 +18,6 @@ pub struct Config {
     pub sessions: SessionsConfig,
     #[serde(default)]
     pub server: ServerConfig,
-
-    pub verify_route: String,
 }
 
 impl Config {
@@ -47,12 +45,20 @@ impl Config {
 pub struct ServerConfig {
     /// The address to bind the server to.
     pub bind_addr: SocketAddr,
+
+    #[serde(default)]
+    pub trusted_header: Option<String>,
+
+    #[serde(default)]
+    pub verify_route: String,
 }
 
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
             bind_addr: SocketAddr::new(Ipv4Addr::LOCALHOST.into(), 0),
+            trusted_header: None,
+            verify_route: "/verify".into(),
         }
     }
 }

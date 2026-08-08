@@ -66,7 +66,7 @@ async fn main() -> eyre::Result<()> {
     // Build the OAuth2 sub-router from oath. It owns clones of the
     // session and user stores; the AppState below holds the same
     // clones so ott's handlers can read them.
-    let oauth_router = OAuth2Router::new(
+    let oauth_router = OAuth2Router::<_, _, http::Uri>::new(
         endpoint,
         sessions.clone(),
         users.clone(),

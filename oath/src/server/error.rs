@@ -28,6 +28,10 @@ pub enum ServerError {
     #[error(transparent)]
     Callback(#[from] crate::CallbackError),
 
+    /// The callback host could not be extracted from the request.
+    #[error("proxy callback host extraction failed: {0}")]
+    ProxyCallback(#[source] BoxError),
+
     /// No pre-auth session matched the cookie, or it has expired.
     #[error("pre-auth session missing or expired")]
     PreauthMissing,
@@ -93,6 +97,7 @@ impl ServerError {
             Self::PreauthMissing | Self::PreauthCookieMissing => StatusCode::BAD_REQUEST,
             Self::MissingCallbackParam(_) => StatusCode::BAD_REQUEST,
             Self::ProviderError { .. } => StatusCode::BAD_REQUEST,
+            Self::ProxyCallback(_) => StatusCode::BAD_REQUEST,
             Self::Callback(crate::CallbackError::StateMismatch) => StatusCode::BAD_REQUEST,
             Self::InvalidUsername(_) => StatusCode::BAD_REQUEST,
             Self::Callback(_) | Self::Oauth2(_) => StatusCode::BAD_GATEWAY,

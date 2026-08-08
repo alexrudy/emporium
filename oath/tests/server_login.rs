@@ -15,7 +15,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use common::ScriptedMock;
 use cookie::Key;
-use http::{Request, StatusCode, header};
+use http::{Request, StatusCode, Uri, header};
 use oath::server::{
     Identity, IdentityResolver, InMemorySessionStore, JsonFileUserStore, OAuth2Router,
     parse_id_token,
@@ -105,10 +105,16 @@ async fn setup_router(id_tok_sub: &str, id_tok_email: &str) -> Setup {
     let sessions = InMemorySessionStore::default();
     let scopes: ScopeSet = "openid email".parse().unwrap();
 
-    let router = OAuth2Router::new(endpoint, sessions.clone(), users, identity, Key::generate())
-        .scopes(scopes)
-        .secure_cookies(false)
-        .into_router();
+    let router = OAuth2Router::<_, _, Uri>::new(
+        endpoint,
+        sessions.clone(),
+        users,
+        identity,
+        Key::generate(),
+    )
+    .scopes(scopes)
+    .secure_cookies(false)
+    .into_router();
 
     Setup {
         router,

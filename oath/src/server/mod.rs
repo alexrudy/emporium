@@ -21,6 +21,7 @@ mod config;
 mod error;
 mod handlers;
 mod identity;
+mod redirect;
 mod session;
 
 #[cfg(feature = "json-file-user-store")]
@@ -33,6 +34,7 @@ use axum::Router;
 use axum::extract::Extension;
 use axum::routing::{get, post};
 use cookie::Key;
+use http::Uri;
 
 use crate::{ScopeSet, TokenEndpoint};
 
@@ -40,6 +42,7 @@ pub use self::config::{CookieNames, OAuth2RouterConfig};
 pub use self::error::{BoxError, ServerError};
 pub use self::handlers::is_user_denied;
 pub use self::identity::{IdClaims, Identity, IdentityError, IdentityResolver, parse_id_token};
+pub use self::redirect::{ExtractRedirect, TrustedHeader};
 pub use self::session::{InMemorySessionStore, SessionData, SessionId, SessionStore};
 
 #[cfg(feature = "json-file-user-store")]
@@ -59,7 +62,7 @@ use self::handlers::RouterState;
 /// Calling [`OAuth2Router::into_router`] produces a stateless
 /// `axum::Router<()>` that you can merge into your application's main
 /// router.
-pub struct OAuth2Router<S, U>
+pub struct OAuth2Router<S, U, C = Uri>
 where
     U: UserStore,
 {
@@ -69,9 +72,10 @@ where
     identity: IdentityResolver<U::Data>,
     cookie_key: Key,
     config: OAuth2RouterConfig,
+    redirect: Option<Arc<C>>,
 }
 
-impl<S, U> std::fmt::Debug for OAuth2Router<S, U>
+impl<S, U, C> std::fmt::Debug for OAuth2Router<S, U, C>
 where
     U: UserStore,
 {
@@ -84,7 +88,7 @@ where
     }
 }
 
-impl<S, U> OAuth2Router<S, U>
+impl<S, U, C> OAuth2Router<S, U, C>
 where
     S: SessionStore,
     U: UserStore,
@@ -104,6 +108,7 @@ where
             identity,
             cookie_key,
             config: OAuth2RouterConfig::default(),
+            redirect: None,
         }
     }
 
@@ -151,6 +156,12 @@ where
         self
     }
 
+    /// Set the redirect target for the callback URI.
+    pub fn redirect(mut self, redirect: Arc<C>) -> Self {
+        self.redirect = Some(redirect);
+        self
+    }
+
     /// Produce the `axum::Router`.
     ///
     /// Generic over the consumer's axum state type `AxS` so the router
@@ -159,6 +170,7 @@ where
     pub fn into_router<AxS>(self) -> Router<AxS>
     where
         AxS: Clone + Send + Sync + 'static,
+        C: ExtractRedirect + Send + Sync + 'static,
     {
         let state = Arc::new(RouterState {
             endpoint: self.endpoint,
@@ -167,10 +179,11 @@ where
             users: self.users,
             identity: self.identity,
             cookie_key: self.cookie_key,
+            redirect: self.redirect,
         });
 
         Router::<AxS>::new()
-            .route(&self.config.login_path(), get(handlers::login::<S, U>))
+            .route(&self.config.login_path(), get(handlers::login::<S, U, C>))
             .route(
                 &self.config.callback_path(),
                 get(handlers::callback::<S, U>),

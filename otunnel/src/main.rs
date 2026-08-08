@@ -100,7 +100,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ))
         .layer(Http1ChecksLayer::new())
         .service(ClientExecutorService::new());
-    let router = build_router(&state.inner)
+    let router = build_router::<http::Uri>(&state.inner)
         .await?
         .into_router()
         .fallback_service(service)
