@@ -7,6 +7,7 @@ use clap::Parser;
 use eyre::Context as _;
 use http::{HeaderName, StatusCode};
 use otool::{auth::OptionalCurrentUser, build_router, state::AppState};
+use systemd_connector::sockets;
 use tower_http::{
     catch_panic::CatchPanicLayer, propagate_header::PropagateHeaderLayer,
     sensitive_headers::SetSensitiveHeadersLayer, trace::TraceLayer,
@@ -21,6 +22,9 @@ struct Cli {
     /// Path to a configuration file
     #[clap(long)]
     config: Option<PathBuf>,
+
+    /// Enable systemd socket activation
+    systemd: bool,
 }
 
 #[tokio::main]
@@ -34,8 +38,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         Config::from_env()?
     };
-
-    eprintln!("{}", serde_json::to_string_pretty(&config)?);
 
     let state = AppState::new(config.oath, config.provider, config.sessions);
 
@@ -61,9 +63,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route(&config.verify_route, get(handle_verify))
         .layer(middleware)
         .with_state(state);
-    let listener = tokio::net::TcpListener::bind(config.server.bind_addr)
-        .await
-        .with_context(|| format!("binding {bind_addr}", bind_addr = config.server.bind_addr))?;
+
+    let listener = if args.systemd {
+        let sockets = sockets().context("Unable to bind to systemd")?;
+        let socket = sockets
+            .into_iter()
+            .next()
+            .ok_or_else(|| eyre::eyre!("No systemd sockets available"))?;
+        let listener_std = socket.listener().context("Converting to TCP listener")?;
+        tokio::net::TcpListener::from_std(listener_std).context("Converting to Tokio listener")?
+    } else {
+        tokio::net::TcpListener::bind(config.server.bind_addr)
+            .await
+            .with_context(|| format!("binding {bind_addr}", bind_addr = config.server.bind_addr))?
+    };
 
     tracing::info!(
         "listening on {bind_addr}",

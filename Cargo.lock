@@ -136,7 +136,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_urlencoded",
- "thiserror",
+ "thiserror 2.0.18",
  "tokio",
  "tower",
  "tracing",
@@ -279,7 +279,7 @@ dependencies = [
  "serde_json",
  "sha1 0.11.0",
  "storage-driver",
- "thiserror",
+ "thiserror 2.0.18",
  "tokio",
  "tokio-util",
  "tower",
@@ -341,7 +341,7 @@ dependencies = [
  "futures",
  "serde",
  "storage",
- "thiserror",
+ "thiserror 2.0.18",
  "tokio",
  "tracing",
 ]
@@ -403,7 +403,7 @@ dependencies = [
  "rustls",
  "rustls-native-certs",
  "socket2",
- "thiserror",
+ "thiserror 2.0.18",
  "tokio",
  "tokio-rustls",
  "tower",
@@ -843,7 +843,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -911,7 +911,7 @@ version = "0.1.0"
 dependencies = [
  "rand 0.9.4",
  "serde",
- "thiserror",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -1280,7 +1280,7 @@ dependencies = [
  "pin-project",
  "rustls",
  "rustls-native-certs",
- "thiserror",
+ "thiserror 2.0.18",
  "tokio",
  "tower",
  "tower-http 0.6.11",
@@ -1300,7 +1300,7 @@ dependencies = [
  "hyperdriver",
  "nom",
  "pin-project-lite",
- "thiserror",
+ "thiserror 2.0.18",
  "tokio",
  "tower",
  "tracing",
@@ -1514,7 +1514,7 @@ dependencies = [
  "sha2 0.10.9",
  "signature",
  "spki",
- "thiserror",
+ "thiserror 2.0.18",
  "url",
  "zeroize",
 ]
@@ -1590,7 +1590,7 @@ dependencies = [
  "serde",
  "serde_json",
  "static_assertions",
- "thiserror",
+ "thiserror 2.0.18",
  "tracing",
 ]
 
@@ -1633,7 +1633,7 @@ dependencies = [
  "secret",
  "serde",
  "serde_json",
- "thiserror",
+ "thiserror 2.0.18",
  "tokio",
  "tracing",
 ]
@@ -1803,7 +1803,7 @@ dependencies = [
  "sha2 0.11.0",
  "storage",
  "storage-driver",
- "thiserror",
+ "thiserror 2.0.18",
  "tokio",
  "tower",
  "tracing",
@@ -1824,7 +1824,7 @@ dependencies = [
  "serde",
  "serde_json",
  "storage",
- "thiserror",
+ "thiserror 2.0.18",
  "tokio",
  "tower-http 0.7.0",
  "tracing",
@@ -1843,7 +1843,7 @@ dependencies = [
  "oath",
  "otool",
  "serde",
- "serde_json",
+ "systemd-connector",
  "tokio",
  "tower",
  "tower-http 0.7.0",
@@ -1873,7 +1873,7 @@ dependencies = [
  "hyperdriver",
  "percent-encoding",
  "serde",
- "thiserror",
+ "thiserror 2.0.18",
  "tracing",
  "url",
 ]
@@ -2386,7 +2386,7 @@ dependencies = [
  "sha2 0.11.0",
  "storage",
  "tempfile",
- "thiserror",
+ "thiserror 2.0.18",
  "tokio",
  "toml_edit",
  "tower",
@@ -2509,7 +2509,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2683,7 +2683,7 @@ dependencies = [
  "rand 0.9.4",
  "serde",
  "serde_json",
- "thiserror",
+ "thiserror 2.0.18",
  "time",
  "url",
  "uuid",
@@ -2994,6 +2994,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "systemd-connector"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7dde1672dc93762d2e059d133866d8bc3c17a24efd88d11dfeb7625065f77df"
+dependencies = [
+ "thiserror 1.0.69",
+ "tracing",
+]
+
+[[package]]
 name = "tailscale"
 version = "0.9.0"
 dependencies = [
@@ -3003,7 +3013,7 @@ dependencies = [
  "hyperdriver",
  "indoc",
  "serde",
- "thiserror",
+ "thiserror 2.0.18",
  "tokio",
 ]
 
@@ -3017,7 +3027,16 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "thiserror"
+version = "1.0.69"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b6aaf5339b578ea85b50e080feb250a3e8ae8cfcdff9a461c9ec2904bc923f52"
+dependencies = [
+ "thiserror-impl 1.0.69",
 ]
 
 [[package]]
@@ -3026,7 +3045,18 @@ version = "2.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4288b5bcbc7920c07a1149a35cf9590a2aa808e0bc1eafaade0b80947865fbc4"
 dependencies = [
- "thiserror-impl",
+ "thiserror-impl 2.0.18",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "1.0.69"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4fee6c4efc90059e10f81e6d42c60a18f76588c3d74cb83a0b242a2b6c7504c1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -3597,7 +3627,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
