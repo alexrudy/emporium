@@ -23,7 +23,7 @@ impl ExtractRedirect for Uri {
         &self,
         #[expect(unused)] request: &mut axum::http::request::Parts,
     ) -> impl Future<Output = Result<Uri, ServerError>> {
-        return std::future::ready(Ok(self.clone()));
+        std::future::ready(Ok(self.clone()))
     }
 }
 
