@@ -12,7 +12,7 @@ pub struct OAuthProviderConfig {
     /// Public origin the provider's redirect URI lives under.
     /// Combined with `/auth/callback` to form the redirect URI sent in
     /// the authorization request.
-    #[serde(with = "serde_uri_opt")]
+    #[serde(default, with = "serde_uri_opt")]
     pub external_origin: Option<Uri>,
     /// Display name shown on the "Sign in with X" button.
     pub provider_name: String,
