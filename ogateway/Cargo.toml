@@ -9,6 +9,7 @@ clap.workspace = true
 config.workspace = true
 eyre.workspace = true
 http.workspace = true
+hyperdriver.workspace = true
 oath = { path = "../oath", features = ["server"] }
 otool.path = "../otool"
 serde.workspace = true
@@ -20,8 +21,8 @@ tracing-subscriber.workspace = true
 tracing.workspace = true
 
 [features]
-tls-ring = ["oath/tls-ring", "otool/tls-ring"]
-tls-aws-lc = ["oath/tls-aws-lc", "otool/tls-aws-lc"]
+tls-ring = ["oath/tls-ring", "otool/tls-ring", "hyperdriver/tls-ring"]
+tls-aws-lc = ["oath/tls-aws-lc", "otool/tls-aws-lc", "hyperdriver/tls-aws-lc"]
 
 [lints]
 workspace = true

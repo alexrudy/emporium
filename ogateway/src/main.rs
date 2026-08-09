@@ -1,14 +1,27 @@
 //! OAuth client that works with the nginx-auth protocol
 
-use std::{path::PathBuf, str::FromStr, sync::Arc};
+use std::{
+    os::{
+        fd::{AsRawFd, FromRawFd},
+        unix::net::UnixListener,
+    },
+    path::PathBuf,
+    str::FromStr,
+    sync::Arc,
+};
 
 use axum::{response::IntoResponse, routing::get};
 use clap::Parser;
 use eyre::Context as _;
 use http::{HeaderName, StatusCode};
+use hyperdriver::{
+    Server,
+    server::{ServerProtocolExt, conn::Acceptor},
+};
 use oath::server::TrustedHeader;
 use otool::{auth::OptionalCurrentUser, build_router, state::AppState};
 use systemd_connector::sockets;
+use tower::ServiceExt;
 use tower_http::{
     catch_panic::CatchPanicLayer, propagate_header::PropagateHeaderLayer,
     sensitive_headers::SetSensitiveHeadersLayer, trace::TraceLayer,
@@ -72,17 +85,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(middleware)
         .with_state(state);
 
-    let listener = if args.systemd {
+    #[allow(unsafe_code)]
+    let acceptor: Acceptor = if args.systemd {
         let sockets = sockets().context("Unable to bind to systemd")?;
         let socket = sockets
             .into_iter()
             .next()
             .ok_or_else(|| eyre::eyre!("No systemd sockets available"))?;
-        let listener_std = socket.listener().context("Converting to TCP listener")?;
-        let listener = tokio::net::TcpListener::from_std(listener_std)
+        let listener_std = unsafe { UnixListener::from_raw_fd(socket.as_raw_fd()) };
+        listener_std.set_nonblocking(true)?;
+        let listener = tokio::net::UnixListener::from_std(listener_std)
             .context("Converting to Tokio listener")?;
         tracing::info!("listening on systemd socket",);
-        listener
+        listener.into()
     } else {
         let listener = tokio::net::TcpListener::bind(config.server.bind_addr)
             .await
@@ -91,10 +106,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "listening on {bind_addr}",
             bind_addr = config.server.bind_addr
         );
-        listener
+        listener.into()
     };
 
-    axum::serve(listener, router.into_make_service()).await?;
+    let server =
+        Server::builder::<http::Request<hyperdriver::Body>>()
+            .with_acceptor(acceptor)
+            .with_shared_service(router.into_service().map_request(
+                |req: http::Request<hyperdriver::Body>| req.map(axum::body::Body::new),
+            ))
+            .with_http1()
+            .with_tokio();
+
+    server.await?;
 
     Ok(())
 }
