@@ -179,7 +179,6 @@ where
             users: self.users,
             identity: self.identity,
             cookie_key: self.cookie_key,
-            redirect: self.redirect,
         });
 
         Router::<AxS>::new()
@@ -190,6 +189,7 @@ where
             )
             .route(&self.config.logout_path(), post(handlers::logout::<S, U>))
             .layer(Extension(state))
+            .layer(Extension(self.redirect))
     }
 }
 

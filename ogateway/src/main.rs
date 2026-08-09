@@ -25,6 +25,7 @@ struct Cli {
     config: Option<PathBuf>,
 
     /// Enable systemd socket activation
+    #[clap(long)]
     systemd: bool,
 }
 

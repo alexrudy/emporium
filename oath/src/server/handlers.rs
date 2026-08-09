@@ -8,7 +8,6 @@ use axum::http::header::SET_COOKIE;
 use axum::http::{HeaderMap, HeaderValue};
 use axum::response::{IntoResponse, Redirect};
 use cookie::{Cookie, CookieJar, Key, SameSite};
-use http::Uri;
 use serde::Deserialize;
 
 use crate::{AuthorizationUrl, TokenEndpoint, TokenErrorCode};
@@ -21,7 +20,7 @@ use super::session::{SessionData, SessionId, SessionStore};
 use super::users::UserStore;
 
 /// Shared state threaded through the router via `Extension`.
-pub(crate) struct RouterState<S, U, C = Uri>
+pub(crate) struct RouterState<S, U>
 where
     U: UserStore,
 {
@@ -31,7 +30,6 @@ where
     pub users: Arc<U>,
     pub identity: IdentityResolver<U::Data>,
     pub cookie_key: Key,
-    pub redirect: Option<Arc<C>>,
 }
 
 impl<S, U> std::fmt::Debug for RouterState<S, U>
@@ -70,17 +68,18 @@ pub(crate) struct CallbackParams {
 /// `GET {prefix}/login`
 pub(crate) async fn login<S, U, C>(
     Extension(state): Extension<Arc<RouterState<S, U>>>,
+    Extension(redirect): Extension<Option<Arc<C>>>,
     Query(params): Query<LoginParams>,
     mut parts: http::request::Parts,
 ) -> Result<axum::response::Response, ServerError>
 where
     S: SessionStore,
     U: UserStore,
-    C: ExtractRedirect,
+    C: ExtractRedirect + Send + Sync + 'static,
 {
     let mut auth_uri = AuthorizationUrl::new(&state.endpoint).scopes(state.config.scopes.clone());
 
-    if let Some(callback) = &state.redirect {
+    if let Some(callback) = &redirect {
         let redirect = callback.from_request_parts(&mut parts).await?;
         auth_uri = auth_uri.with_redirect(redirect);
     }

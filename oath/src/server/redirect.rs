@@ -15,7 +15,7 @@ pub trait ExtractRedirect {
     fn from_request_parts(
         &self,
         request: &mut axum::http::request::Parts,
-    ) -> impl Future<Output = Result<Uri, ServerError>>;
+    ) -> impl Future<Output = Result<Uri, ServerError>> + Send;
 }
 
 impl ExtractRedirect for Uri {
