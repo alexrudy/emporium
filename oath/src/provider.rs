@@ -12,8 +12,8 @@ pub struct OAuthProviderConfig {
     /// Public origin the provider's redirect URI lives under.
     /// Combined with `/auth/callback` to form the redirect URI sent in
     /// the authorization request.
-    #[serde(with = "serde_uri")]
-    pub external_origin: Uri,
+    #[serde(with = "serde_uri_opt")]
+    pub external_origin: Option<Uri>,
     /// Display name shown on the "Sign in with X" button.
     pub provider_name: String,
     /// OAuth2 client id issued by the provider.
@@ -29,11 +29,16 @@ impl OAuthProviderConfig {
     /// Public redirect URI sent in the authorization request: the
     /// configured `external_origin` joined to `/auth/callback`.
     pub fn redirect_uri(&self) -> Uri {
-        let base = self.external_origin.to_string();
-        let trimmed = base.trim_end_matches('/');
-        format!("{trimmed}/auth/callback")
-            .parse()
-            .expect("validated external_origin + known path is a valid Uri")
+        if let Some(base) = self.external_origin.as_ref().map(ToString::to_string) {
+            let trimmed = base.trim_end_matches('/');
+            format!("{trimmed}/auth/callback")
+                .parse()
+                .expect("validated external_origin + known path is a valid Uri")
+        } else {
+            "/auth/callback"
+                .parse()
+                .expect("valid default redirect_uri")
+        }
     }
 
     /// Resolve the provider's endpoints and build a [`TokenEndpoint`].
@@ -191,5 +196,52 @@ mod serde_uri {
         S: serde::Serializer,
     {
         serializer.serialize_str(&uri.to_string())
+    }
+}
+
+mod serde_uri_opt {
+    use http::Uri;
+    use serde::de::Visitor;
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Uri>, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct UriVisitor;
+
+        impl<'de> Visitor<'de> for UriVisitor {
+            type Value = Option<Uri>;
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                write!(formatter, "a string URI")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                v.parse::<Uri>()
+                    .map_err(|source| E::custom(format!("invalid URI: {source}")))
+                    .map(Some)
+            }
+
+            fn visit_none<E>(self) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(None)
+            }
+        }
+
+        deserializer.deserialize_str(UriVisitor)
+    }
+
+    pub fn serialize<S>(uri: &Option<Uri>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match uri.as_ref() {
+            Some(uri) => serializer.serialize_str(&uri.to_string()),
+            None => serializer.serialize_none(),
+        }
     }
 }
