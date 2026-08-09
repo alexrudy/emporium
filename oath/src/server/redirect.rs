@@ -12,6 +12,7 @@ use super::ServerError;
 /// Extracts the redirect URI from the incoming request.
 pub trait ExtractRedirect {
     /// Extracts the redirect URI from the incoming request.
+    #[expect(clippy::wrong_self_convention)]
     fn from_request_parts(
         &self,
         request: &mut axum::http::request::Parts,
@@ -49,22 +50,20 @@ impl From<http::HeaderName> for TrustedHeader {
     }
 }
 impl ExtractRedirect for TrustedHeader {
-    fn from_request_parts(
+    async fn from_request_parts(
         &self,
         request: &mut axum::http::request::Parts,
-    ) -> impl Future<Output = Result<Uri, ServerError>> {
-        async {
-            let value = request
-                .headers
-                .get(&self.0)
-                .ok_or_else(|| ExtractHeaderError::Missing(self.0.clone()))?;
-            let callback = value
-                .to_str()
-                .map_err(|error| ServerError::ProxyCallback(error.into()))?;
-            let uri = callback
-                .parse()
-                .map_err(|error: http::uri::InvalidUri| ServerError::ProxyCallback(error.into()))?;
-            Ok(uri)
-        }
+    ) -> Result<Uri, ServerError> {
+        let value = request
+            .headers
+            .get(&self.0)
+            .ok_or_else(|| ExtractHeaderError::Missing(self.0.clone()))?;
+        let callback = value
+            .to_str()
+            .map_err(|error| ServerError::ProxyCallback(error.into()))?;
+        let uri = callback
+            .parse()
+            .map_err(|error: http::uri::InvalidUri| ServerError::ProxyCallback(error.into()))?;
+        Ok(uri)
     }
 }
