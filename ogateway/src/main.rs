@@ -79,17 +79,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .next()
             .ok_or_else(|| eyre::eyre!("No systemd sockets available"))?;
         let listener_std = socket.listener().context("Converting to TCP listener")?;
-        tokio::net::TcpListener::from_std(listener_std).context("Converting to Tokio listener")?
+        let listener = tokio::net::TcpListener::from_std(listener_std)
+            .context("Converting to Tokio listener")?;
+        tracing::info!("listening on systemd socket",);
+        listener
     } else {
-        tokio::net::TcpListener::bind(config.server.bind_addr)
+        let listener = tokio::net::TcpListener::bind(config.server.bind_addr)
             .await
-            .with_context(|| format!("binding {bind_addr}", bind_addr = config.server.bind_addr))?
+            .with_context(|| format!("binding {bind_addr}", bind_addr = config.server.bind_addr))?;
+        tracing::info!(
+            "listening on {bind_addr}",
+            bind_addr = config.server.bind_addr
+        );
+        listener
     };
 
-    tracing::info!(
-        "listening on {bind_addr}",
-        bind_addr = config.server.bind_addr
-    );
     axum::serve(listener, router.into_make_service()).await?;
 
     Ok(())
