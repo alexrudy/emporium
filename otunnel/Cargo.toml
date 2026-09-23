@@ -6,7 +6,7 @@ license = "MIT"
 
 [dependencies]
 axum.workspace = true
-chateau = { workspace = true }
+# chateau = { workspace = true }
 clap.workspace = true
 config.workspace = true
 cookie.workspace = true

@@ -1286,9 +1286,9 @@ dependencies = [
 
 [[package]]
 name = "hyperdriver"
-version = "0.12.6"
+version = "0.12.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "35f99e507cf5fc828e2d4e72e9b5e6209a6b131f6b69b7b3701770fcba6ff5b8"
+checksum = "168c00f860fb67648867c0bda41f2bb041244a5b83752030a53b1d2f50285056"
 dependencies = [
  "bytes",
  "camino",
@@ -1986,7 +1986,6 @@ name = "otunnel"
 version = "0.1.0"
 dependencies = [
  "axum",
- "chateau 0.4.1",
  "clap",
  "config",
  "cookie",

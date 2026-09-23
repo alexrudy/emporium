@@ -3,8 +3,8 @@ use std::{
     path::PathBuf,
 };
 
-use chateau::client::conn::transport::tcp::TcpTransportConfig;
 use config::ConfigError;
+use hyperdriver::client::conn::transport::tcp::TcpTransportConfig;
 use oath::{provider::OAuthProviderConfig, server::OAuth2RouterConfig};
 use otool::config::SessionsConfig;
 use serde::{Deserialize, Serialize};
