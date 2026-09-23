@@ -1,8 +1,9 @@
 #!/usr/bin/env just --justfile
 
-nightly := "nightly"
-msrv := "1.90"
-rust := env("RUSTUP_TOOLCHAIN", "stable")
+nightly := "nightly-2025-06-20"
+msrv := `awk -F'"' '/^rust-version/{print $2}' Cargo.toml`
+pinned-stable := `awk -F'"' '/^channel/{print $2}' rust-toolchain.toml`
+rust := env("RUSTUP_TOOLCHAIN", pinned-stable)
 
 # TLS crypto backend to select when *running* tests. Many crates pull in rustls
 # via hyperdriver, which needs exactly one backend: with none selected chateau
