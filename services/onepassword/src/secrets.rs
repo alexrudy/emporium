@@ -165,7 +165,7 @@ impl SecretManager {
         let url: Url = address.into();
 
         let reference = SecretReference::parse(&url).map_err(|error| SecretsError {
-            kind: SecretsErrorKind::InvalidUrl(error),
+            kind: Box::new(SecretsErrorKind::InvalidUrl(error)),
             url: url.clone(),
         })?;
 
@@ -184,7 +184,7 @@ impl SecretManager {
             self.get_by_field(&reference.item, &reference.field).await
         }
         .map_err(|error| SecretsError {
-            kind: error,
+            kind: Box::new(error),
             url: url.clone(),
         })
     }
@@ -289,7 +289,7 @@ pub enum SecretsErrorKind {
 #[error("Secret '{url}' error: {kind}")]
 pub struct SecretsError {
     #[source]
-    kind: SecretsErrorKind,
+    kind: Box<SecretsErrorKind>,
     url: Url,
 }
 

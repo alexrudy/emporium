@@ -100,7 +100,7 @@ pub enum StorageErrorKind {
 
     /// Errro from the storage provider
     #[error("Storage: {0}")]
-    Storage(#[from] storage::StorageError),
+    Storage(#[from] Box<storage::StorageError>),
 
     /// Error decoding the key as utf8
     #[error("Encoding: {0}")]
@@ -113,6 +113,12 @@ pub enum StorageErrorKind {
     /// Error decoding the key as PKCS1
     #[error("PKCS1: {0}")]
     Pkcs1(#[from] rsa::pkcs1::Error),
+}
+
+impl From<storage::StorageError> for StorageErrorKind {
+    fn from(err: storage::StorageError) -> Self {
+        StorageErrorKind::Storage(Box::new(err))
+    }
 }
 
 /// Error from a storage provider
