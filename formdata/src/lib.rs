@@ -41,7 +41,7 @@ mod ser;
 use std::borrow::Cow;
 use std::fmt;
 
-use rand::{Rng as _, rng};
+use rand::{RngExt as _, rng};
 use serde::Serialize;
 
 pub use self::error::Error;

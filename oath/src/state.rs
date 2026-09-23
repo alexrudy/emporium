@@ -7,8 +7,8 @@
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use rand::TryRngCore as _;
-use rand::rngs::OsRng;
+use rand::TryRng as _;
+use rand::rngs::SysRng;
 use secret::Secret;
 use serde::{Deserialize, Serialize};
 
@@ -29,7 +29,7 @@ impl StateToken {
     /// [`OsRng`], encoded as 43 base64url characters (no padding).
     pub fn generate() -> Self {
         let mut bytes = [0u8; 32];
-        OsRng
+        SysRng
             .try_fill_bytes(&mut bytes)
             .expect("OsRng must provide random bytes");
         Self(Secret::from(URL_SAFE_NO_PAD.encode(bytes)))

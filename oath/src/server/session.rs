@@ -13,8 +13,8 @@ use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
-use rand::TryRngCore as _;
-use rand::rngs::OsRng;
+use rand::TryRng as _;
+use rand::rngs::SysRng;
 use serde::{Deserialize, Serialize};
 
 use crate::grant::PendingAuthorization;
@@ -54,7 +54,7 @@ impl SessionId {
     /// Generate a fresh, high-entropy session id.
     pub fn generate() -> Self {
         let mut bytes = [0u8; 32];
-        OsRng
+        SysRng
             .try_fill_bytes(&mut bytes)
             .expect("OsRng must provide random bytes");
         Self(URL_SAFE_NO_PAD.encode(bytes))
