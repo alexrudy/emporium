@@ -19,6 +19,9 @@ members = [
     "storage-driver",
 ]
 
+[workspace.package]
+rust-version = "1.90"
+
 [workspace.dependencies]
 arc-swap = "1"
 async-trait = "0.1"
