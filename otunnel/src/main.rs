@@ -2,13 +2,13 @@
 
 use std::path::PathBuf;
 
-use chateau::client::{
-    ConnectionManagerLayer,
-    conn::{service::ClientExecutorService, transport::tcp::TcpTransport},
-};
 use clap::Parser;
 use eyre::Context as _;
 use http::{HeaderName, StatusCode};
+use hyperdriver::client::{
+    conn::ConnectionManagerLayer,
+    conn::{service::ClientExecutorService, transport::tcp::TcpTransport},
+};
 use hyperdriver::{
     client::conn::{dns::GaiResolver, protocol::Http1Builder},
     service::Http1ChecksLayer,
