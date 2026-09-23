@@ -46,7 +46,7 @@ jobs:
       matrix:
         target:
           - x86_64-unknown-linux-gnu
-        toolchian:
+        toolchain:
           - "${{ needs.versions.outputs.msrv }}"
           - "${{ needs.versions.outputs.stable }}"
           - stable
@@ -58,7 +58,7 @@ jobs:
       - name: Install rust toolchain
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: ${{ matrix.toolchain }}
+          toolchain: "${{ matrix.toolchain }}"
       - name: Run cargo build
         run: cargo build --release --target ${{ matrix.target }}
 
