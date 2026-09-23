@@ -399,9 +399,9 @@ checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
 name = "chateau"
-version = "0.3.2"
+version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df5b17e9536a94ffc05648b514596fb9312a2704c3fcc0d7331a8e750d0ea023"
+checksum = "dd24cc924dcb787f1ac5906958be52f19f5fed57fcc2a6f39d0b9bb9179bd5bc"
 dependencies = [
  "futures",
  "parking_lot",
@@ -412,6 +412,23 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tokio-rustls",
+ "tower",
+ "tracing",
+]
+
+[[package]]
+name = "chateau"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6623a929c414c68c2531c0e25eca852224da7718ca4ad812363a6c793da61c66"
+dependencies = [
+ "futures",
+ "parking_lot",
+ "pin-project",
+ "socket2",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
  "tower",
  "tracing",
 ]
@@ -1275,7 +1292,7 @@ checksum = "93a12e30e23cce40b93dce105bbdff49912ef37de668f3ce350d45756d309007"
 dependencies = [
  "bytes",
  "camino",
- "chateau",
+ "chateau 0.3.4",
  "futures-core",
  "futures-util",
  "http",
@@ -1300,7 +1317,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a73405ea066858bab0c3336afd340ac6fa37cdbae4bf5b9f175364b6142fc15"
 dependencies = [
  "bytes",
- "chateau",
+ "chateau 0.3.4",
  "http",
  "hyper",
  "hyperdriver",
@@ -1958,7 +1975,7 @@ name = "otunnel"
 version = "0.1.0"
 dependencies = [
  "axum",
- "chateau",
+ "chateau 0.4.1",
  "clap",
  "config",
  "cookie",
