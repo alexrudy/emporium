@@ -56,7 +56,7 @@ impl SessionId {
         let mut bytes = [0u8; 32];
         SysRng
             .try_fill_bytes(&mut bytes)
-            .expect("OsRng must provide random bytes");
+            .expect("SysRng must provide random bytes");
         Self(URL_SAFE_NO_PAD.encode(bytes))
     }
 

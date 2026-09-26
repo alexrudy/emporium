@@ -26,12 +26,12 @@ pub struct StateToken(Secret);
 
 impl StateToken {
     /// Generate a fresh state token from 32 random bytes drawn from
-    /// [`OsRng`], encoded as 43 base64url characters (no padding).
+    /// [`SysRng`], encoded as 43 base64url characters (no padding).
     pub fn generate() -> Self {
         let mut bytes = [0u8; 32];
         SysRng
             .try_fill_bytes(&mut bytes)
-            .expect("OsRng must provide random bytes");
+            .expect("SysRng must provide random bytes");
         Self(Secret::from(URL_SAFE_NO_PAD.encode(bytes)))
     }
 

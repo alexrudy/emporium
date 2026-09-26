@@ -150,7 +150,7 @@ let response = endpoint.poll_device_token(&auth).await?;
 - All token-bearing types wrap [`secret::Secret`]: they never appear in
   `Debug` output and are zeroed on drop.
 - Authorization-code flows use PKCE (`S256` by default) with verifiers
-  drawn from `OsRng`. `Plain` is exposed only for providers that demand
+  drawn from `SysRng`. `Plain` is exposed only for providers that demand
   it.
 - `StateToken::verify` uses a constant-time compare to dodge timing
   oracles, even though state tokens are short-lived.
