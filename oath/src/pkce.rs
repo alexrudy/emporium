@@ -16,8 +16,8 @@ use std::fmt;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use rand::TryRngCore as _;
-use rand::rngs::OsRng;
+use rand::TryRng as _;
+use rand::rngs::SysRng;
 use secret::Secret;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -75,12 +75,12 @@ pub struct PkceVerifier(Secret);
 
 impl PkceVerifier {
     /// Generate a fresh verifier from 32 random bytes drawn from
-    /// [`OsRng`], encoded as 43 base64url characters (no padding).
+    /// [`SysRng`], encoded as 43 base64url characters (no padding).
     pub fn generate() -> Self {
         let mut bytes = [0u8; 32];
-        OsRng
+        SysRng
             .try_fill_bytes(&mut bytes)
-            .expect("OsRng must provide random bytes");
+            .expect("SysRng must provide random bytes");
         let encoded = URL_SAFE_NO_PAD.encode(bytes);
         // 32 bytes always encodes to 43 chars in base64url (no pad), within range.
         Self(Secret::from(encoded))

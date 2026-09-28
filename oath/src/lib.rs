@@ -109,7 +109,7 @@
 //!   appear in `Debug` output and are zeroed on drop.
 //! - Authorization-code flows always use PKCE (RFC 7636) with `S256` by
 //!   default. The verifier and challenge are generated from
-//!   `rand::rngs::OsRng`.
+//!   `rand::rngs::SysRng`.
 //! - [`StateToken::verify`] uses a constant-time compare to dodge
 //!   timing oracles, even though state tokens are short-lived and
 //!   single-use.
