@@ -14,7 +14,7 @@ use crate::{AuthorizationUrl, TokenErrorCode};
 
 use super::config::OAuth2RouterConfig;
 use super::error::ServerError;
-use super::identity::{Identity, IdentityResolver};
+use super::identity::{Identity, IdentityResolver, validate_id_token};
 use super::redirect::ExtractRedirect;
 use super::registry::Provider;
 use super::session::{SessionData, SessionId, SessionStore};
@@ -199,6 +199,17 @@ where
     let token_set = pending
         .complete(provider.endpoint(), &auth_state, auth_code)
         .await?;
+
+    // OIDC providers return an id_token; make sure it's from this
+    // provider and for this client before the app's resolver sees it.
+    if token_set.id_token.is_some() {
+        validate_id_token(
+            &token_set,
+            provider.endpoint().client_id(),
+            provider.expected_issuer(),
+        )
+        .map_err(ServerError::InvalidIdToken)?;
+    }
 
     let Identity { username, data } = state
         .identity

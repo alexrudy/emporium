@@ -62,6 +62,11 @@ pub enum ServerError {
     #[error("identity resolution failed: {0}")]
     Identity(#[source] BoxError),
 
+    /// The provider's `id_token` was issued by someone else, or for a
+    /// different client.
+    #[error("id_token rejected: {0}")]
+    InvalidIdToken(#[source] super::IdentityError),
+
     /// The session store failed.
     #[error("session store error: {0}")]
     SessionStore(#[source] BoxError),
@@ -113,7 +118,7 @@ impl ServerError {
             Self::InvalidUsername(_) => StatusCode::BAD_REQUEST,
             Self::ProviderMismatch { .. } => StatusCode::BAD_REQUEST,
             Self::Callback(_) | Self::Oauth2(_) => StatusCode::BAD_GATEWAY,
-            Self::Identity(_) => StatusCode::BAD_GATEWAY,
+            Self::Identity(_) | Self::InvalidIdToken(_) => StatusCode::BAD_GATEWAY,
             Self::SessionStore(_) | Self::UserStore(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }

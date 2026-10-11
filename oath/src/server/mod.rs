@@ -52,7 +52,9 @@ use self::registry::Mount;
 pub use self::config::{CookieNames, OAuth2RouterConfig};
 pub use self::error::{BoxError, ServerError};
 pub use self::handlers::is_user_denied;
-pub use self::identity::{IdClaims, Identity, IdentityError, IdentityResolver, parse_id_token};
+pub use self::identity::{
+    IdClaims, Identity, IdentityError, IdentityResolver, parse_id_token, validate_id_token,
+};
 pub use self::redirect::{
     ExtractRedirect, ForwardedError, ForwardedHeader, TrustedHeader, XForwardedHeaders,
 };

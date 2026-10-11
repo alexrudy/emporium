@@ -51,8 +51,15 @@ issuer = "https://accounts.google.com"
 # auth_uri  = "https://accounts.google.com/o/oauth2/v2/auth"
 # token_uri = "https://oauth2.googleapis.com/token"
 
-# Named providers. Same fields as the single provider above, plus an
-# optional `scopes` overriding [oauth] scopes. `provider_name` defaults
+# ID tokens' `iss` claim must exactly match the issuer from discovery.
+# Set this to skip that check (`aud` is still checked) for providers whose
+# discovery document doesn't state the exact issuer, such as Microsoft
+# Entra's multi-tenant `common` endpoint. Default: false.
+# skip_issuer_validation = true
+
+# Named providers. Same fields as the single provider above (including
+# `skip_issuer_validation`), plus an optional `scopes` overriding
+# [oauth] scopes. `provider_name` defaults
 # to the id. Ids may contain ASCII letters, digits, `-`, and `_`.
 #
 # [providers.okta]

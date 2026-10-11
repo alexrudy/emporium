@@ -94,6 +94,8 @@ async fn builder_populates_endpoints_from_metadata() {
         .build()
         .expect("builder yields TokenEndpoint");
 
+    // Recorded verbatim (no Uri normalization), for exact `iss` matching.
+    assert_eq!(endpoint.issuer(), Some("https://example.com"));
     assert_eq!(
         endpoint.token_uri().to_string(),
         "https://example.com/oauth/token",

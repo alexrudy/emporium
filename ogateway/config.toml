@@ -34,6 +34,12 @@ token_uri = "http://localhost:3000/api/oauth/token"
 # Fields are the same as `[provider]`, plus an optional `scopes` that
 # overrides `[oath] scopes`.
 #
+# Any provider (including `[provider]`) may set
+# `skip_issuer_validation = true` to stop checking ID tokens' `iss`
+# against the discovered issuer (`aud` is still checked). Only use it for
+# providers whose discovery document doesn't state the exact issuer, such
+# as Microsoft Entra's multi-tenant `common` endpoint.
+#
 # [providers.google]
 # client_id = "..."
 # client_secret = "..."

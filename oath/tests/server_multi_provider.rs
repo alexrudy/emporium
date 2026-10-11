@@ -82,9 +82,20 @@ fn resolver() -> IdentityResolver<String> {
     })
 }
 
-fn token_response(sub: &str) -> Vec<u8> {
+/// A token response for provider `name`, whose id_token carries that
+/// provider's issuer and client id.
+fn token_response(name: &str, sub: &str) -> Vec<u8> {
+    token_response_with(
+        sub,
+        &format!("https://{name}.example.com"),
+        &format!("{name}-client"),
+    )
+}
+
+fn token_response_with(sub: &str, iss: &str, aud: &str) -> Vec<u8> {
     let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"RS256","typ":"JWT"}"#);
-    let payload = URL_SAFE_NO_PAD.encode(serde_json::json!({ "sub": sub }).to_string());
+    let payload = URL_SAFE_NO_PAD
+        .encode(serde_json::json!({ "sub": sub, "iss": iss, "aud": aud }).to_string());
     let sig = URL_SAFE_NO_PAD.encode(b"sig");
     serde_json::to_vec(&serde_json::json!({
         "access_token": "atok",
@@ -114,6 +125,7 @@ fn endpoint(name: &str, mock: &ScriptedMock) -> TokenEndpoint {
                 .parse()
                 .unwrap(),
         )
+        .issuer(format!("https://{name}.example.com"))
         .transport(mock.clone())
         .build()
         .unwrap()
@@ -136,8 +148,16 @@ fn setup(
     ) -> OAuth2Router<InMemorySessionStore, MemoryUsers>,
 ) -> Setup {
     let mock = ScriptedMock::new();
-    mock.enqueue_json("/google/token", StatusCode::OK, &token_response("g-123"));
-    mock.enqueue_json("/okta/token", StatusCode::OK, &token_response("o-456"));
+    mock.enqueue_json(
+        "/google/token",
+        StatusCode::OK,
+        &token_response("google", "g-123"),
+    );
+    mock.enqueue_json(
+        "/okta/token",
+        StatusCode::OK,
+        &token_response("okta", "o-456"),
+    );
 
     let users = MemoryUsers::default();
     let sessions = InMemorySessionStore::default();
@@ -282,12 +302,16 @@ async fn each_provider_has_its_own_login_and_callback() {
 async fn same_sub_at_two_providers_is_two_users() {
     let setup = setup(|b| b);
     // Both providers issue the same `sub`.
-    setup
-        .mock
-        .enqueue_json("/google/token", StatusCode::OK, &token_response("same"));
-    setup
-        .mock
-        .enqueue_json("/okta/token", StatusCode::OK, &token_response("same"));
+    setup.mock.enqueue_json(
+        "/google/token",
+        StatusCode::OK,
+        &token_response("google", "same"),
+    );
+    setup.mock.enqueue_json(
+        "/okta/token",
+        StatusCode::OK,
+        &token_response("okta", "same"),
+    );
 
     // `setup` queued one response per provider (g-123 / o-456) ahead of
     // the shared `sub`, so log in twice with each.
@@ -303,6 +327,92 @@ async fn same_sub_at_two_providers_is_two_users() {
         setup.users.record("okta", "same").as_deref(),
         Some("okta:same")
     );
+}
+
+/// Log in at `provider` with an id_token from `iss` for `aud`; return the
+/// callback status.
+async fn callback_status_for_token(
+    configure: impl FnOnce(
+        OAuth2Router<InMemorySessionStore, MemoryUsers>,
+    ) -> OAuth2Router<InMemorySessionStore, MemoryUsers>,
+    iss: &str,
+    aud: &str,
+) -> (StatusCode, MemoryUsers) {
+    let setup = setup(configure);
+    // Use up okta's default response so ours is next.
+    complete_login(&setup.router, "okta").await;
+    setup.mock.enqueue_json(
+        "/okta/token",
+        StatusCode::OK,
+        &token_response_with("intruder", iss, aud),
+    );
+
+    let (url, preauth) = begin_login(&setup.router, "/auth/okta/login").await;
+    let state = query(&url, "state").unwrap();
+    let resp = get(
+        &setup.router,
+        &format!("/auth/okta/callback?code=c&state={state}"),
+        Some(&preauth),
+    )
+    .await;
+    (resp.status(), setup.users)
+}
+
+#[tokio::test]
+async fn id_token_from_another_issuer_is_rejected() {
+    let (status, users) =
+        callback_status_for_token(|b| b, "https://google.example.com", "okta-client").await;
+    assert_eq!(status, StatusCode::BAD_GATEWAY);
+    assert!(users.record("okta", "intruder").is_none());
+}
+
+#[tokio::test]
+async fn id_token_for_another_client_is_rejected() {
+    let (status, users) =
+        callback_status_for_token(|b| b, "https://okta.example.com", "google-client").await;
+    assert_eq!(status, StatusCode::BAD_GATEWAY);
+    assert!(users.record("okta", "intruder").is_none());
+}
+
+#[tokio::test]
+async fn issuer_check_can_be_skipped_but_audience_still_applies() {
+    let mock = ScriptedMock::new();
+    let skip = |b: OAuth2Router<InMemorySessionStore, MemoryUsers>| {
+        b.provider(Provider::new(id("entra"), endpoint("entra", &mock)).skip_issuer_validation())
+    };
+
+    let setup = setup(skip);
+    mock.enqueue_json(
+        "/entra/token",
+        StatusCode::OK,
+        &token_response_with(
+            "u1",
+            "https://login.example.com/tenant-a/v2.0",
+            "entra-client",
+        ),
+    );
+    complete_login(&setup.router, "entra").await;
+    assert!(setup.users.record("entra", "u1").is_some());
+
+    mock.enqueue_json(
+        "/entra/token",
+        StatusCode::OK,
+        &token_response_with(
+            "u2",
+            "https://login.example.com/tenant-a/v2.0",
+            "other-client",
+        ),
+    );
+    let (url, preauth) = begin_login(&setup.router, "/auth/entra/login").await;
+    let state = query(&url, "state").unwrap();
+    let resp = get(
+        &setup.router,
+        &format!("/auth/entra/callback?code=c&state={state}"),
+        Some(&preauth),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
+    assert!(setup.users.record("entra", "u2").is_none());
 }
 
 #[tokio::test]
@@ -361,7 +471,11 @@ async fn default_login_uses_explicit_default_provider() {
 #[tokio::test]
 async fn new_keeps_root_paths_alongside_added_providers() {
     let mock = ScriptedMock::new();
-    mock.enqueue_json("/legacy/token", StatusCode::OK, &token_response("l-1"));
+    mock.enqueue_json(
+        "/legacy/token",
+        StatusCode::OK,
+        &token_response("legacy", "l-1"),
+    );
 
     let users = MemoryUsers::default();
     let identity = resolver();
@@ -481,8 +595,16 @@ async fn trusted_header_gives_each_provider_and_host_its_own_callback() {
 #[tokio::test]
 async fn exchange_repeats_the_redirect_uri_sent_to_the_provider() {
     let mock = ScriptedMock::new();
-    mock.enqueue_json("/google/token", StatusCode::OK, &token_response("g-1"));
-    mock.enqueue_json("/google/token", StatusCode::OK, &token_response("g-2"));
+    mock.enqueue_json(
+        "/google/token",
+        StatusCode::OK,
+        &token_response("google", "g-1"),
+    );
+    mock.enqueue_json(
+        "/google/token",
+        StatusCode::OK,
+        &token_response("google", "g-2"),
+    );
     let users = MemoryUsers::default();
     let router = trusted_header_router(&mock, users.clone());
 

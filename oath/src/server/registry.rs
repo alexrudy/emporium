@@ -142,6 +142,7 @@ pub struct Provider {
     endpoint: TokenEndpoint,
     scopes: Option<ScopeSet>,
     display_name: Option<String>,
+    validate_issuer: bool,
     pub(crate) mount: Mount,
 }
 
@@ -158,6 +159,7 @@ impl Provider {
             endpoint,
             scopes: None,
             display_name: None,
+            validate_issuer: true,
             mount: Mount::Scoped,
         }
     }
@@ -188,6 +190,18 @@ impl Provider {
     /// Human-readable name, e.g. for a "Sign in with X" button.
     pub fn with_display_name(mut self, name: impl Into<String>) -> Self {
         self.display_name = Some(name.into());
+        self
+    }
+
+    /// Don't compare ID tokens' `iss` claim to the endpoint's
+    /// [issuer](TokenEndpoint::issuer). The `aud` / `azp` checks still
+    /// apply.
+    ///
+    /// Only for providers whose discovery document doesn't state the
+    /// exact issuer, e.g. Microsoft Entra's multi-tenant `common`
+    /// endpoint, which advertises a `{tenantid}` placeholder.
+    pub fn skip_issuer_validation(mut self) -> Self {
+        self.validate_issuer = false;
         self
     }
 
@@ -225,6 +239,13 @@ impl Provider {
             Mount::Scoped => config.provider_callback_path(&self.id),
             Mount::Root => config.callback_path(),
         }
+    }
+
+    /// The issuer ID tokens must carry, if it's known and checked.
+    pub(crate) fn expected_issuer(&self) -> Option<&str> {
+        self.validate_issuer
+            .then(|| self.endpoint.issuer())
+            .flatten()
     }
 
     pub(crate) fn effective_scopes(&self, config: &OAuth2RouterConfig) -> ScopeSet {

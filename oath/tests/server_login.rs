@@ -37,8 +37,13 @@ struct AppUser {
 
 fn id_token(sub: &str, email: &str) -> String {
     let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"RS256","typ":"JWT"}"#);
-    let payload =
-        serde_json::json!({"sub": sub, "email": email, "email_verified": true}).to_string();
+    let payload = serde_json::json!({
+        "sub": sub,
+        "email": email,
+        "email_verified": true,
+        "aud": "the-client",
+    })
+    .to_string();
     let payload_b64 = URL_SAFE_NO_PAD.encode(payload.as_bytes());
     let sig = URL_SAFE_NO_PAD.encode(b"unverified-signature-bytes");
     format!("{header}.{payload_b64}.{sig}")

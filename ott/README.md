@@ -101,6 +101,7 @@ based on your deployment style.
 | `OAUTH_TOKEN_URI`     | one of   | —                             |
 | `COOKIE_KEY`          | yes      | — (base64, ≥64 bytes)         |
 | `OAUTH_SCOPES`        | no       | `openid email profile`        |
+| `OAUTH_SKIP_ISSUER_VALIDATION` | no | `false`                 |
 | `PROVIDER_NAME`       | no       | `OAuth`                       |
 | `EXTERNAL_ORIGIN`     | no       | `http://127.0.0.1:3000`       |
 | `BIND_ADDR`           | no       | `127.0.0.1:3000`              |
@@ -115,12 +116,20 @@ based on your deployment style.
 single provider served at `/auth/login`. To add more, list ids in
 `OAUTH_PROVIDERS` and configure each with `OAUTH_<ID>_CLIENT_ID`,
 `OAUTH_<ID>_CLIENT_SECRET`, `OAUTH_<ID>_ISSUER` (or `_AUTH_URI` +
-`_TOKEN_URI`), and optionally `OAUTH_<ID>_PROVIDER_NAME` and
-`OAUTH_<ID>_SCOPES`. `<ID>` is the id upper-cased with `-` replaced by
+`_TOKEN_URI`), and optionally `OAUTH_<ID>_PROVIDER_NAME`,
+`OAUTH_<ID>_SCOPES`, and `OAUTH_<ID>_SKIP_ISSUER_VALIDATION`. `<ID>` is the id upper-cased with `-` replaced by
 `_`. Each named provider is served at `/auth/<id>/login`. With named
 providers configured, the unprefixed provider is optional. In TOML, the
 equivalent is a `[providers.<id>]` table per provider (see
 [`ott.toml.example`](ott.toml.example)).
+
+**ID token checks.** After the code exchange, the `id_token`'s `aud`
+must include the provider's client id, and (for discovery-configured
+providers) its `iss` must exactly match the discovered issuer. Set
+`OAUTH_SKIP_ISSUER_VALIDATION=true` (or `skip_issuer_validation = true`
+in TOML) to skip the `iss` check for providers whose discovery document
+doesn't state the exact issuer, such as Microsoft Entra's multi-tenant
+`common` endpoint.
 
 **Endpoint resolution.** Set *either* `OAUTH_ISSUER` (discovery —
 ott fetches `<issuer>/.well-known/openid-configuration` at startup

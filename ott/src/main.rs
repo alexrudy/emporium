@@ -191,11 +191,14 @@ async fn resolve_endpoint(
 }
 
 fn customize(provider: Provider, config: &OAuthProviderConfig) -> Provider {
-    let provider = provider.with_display_name(config.provider_name.clone());
-    match &config.scopes {
-        Some(scopes) => provider.with_scopes(ensure_openid(scopes.clone())),
-        None => provider,
+    let mut provider = provider.with_display_name(config.provider_name.clone());
+    if let Some(scopes) = &config.scopes {
+        provider = provider.with_scopes(ensure_openid(scopes.clone()));
     }
+    if config.skip_issuer_validation {
+        provider = provider.skip_issuer_validation();
+    }
+    provider
 }
 
 /// We rely on `parse_id_token` to extract identity, which means the

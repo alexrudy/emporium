@@ -218,6 +218,7 @@ mod tests {
             [providers.okta]
             client_id = "o"
             provider_name = "Okta"
+            skip_issuer_validation = true
             [providers.okta.endpoints]
             auth_uri = "https://okta.example.com/authorize"
             token_uri = "https://okta.example.com/token"
@@ -236,6 +237,14 @@ mod tests {
             Some("openid email".parse().unwrap())
         );
         assert!(cfg.providers.provider.is_none());
+
+        let skips: Vec<_> = cfg
+            .providers
+            .providers
+            .values()
+            .map(|p| p.skip_issuer_validation)
+            .collect();
+        assert_eq!(skips, [false, true]);
     }
 
     #[test]

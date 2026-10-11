@@ -27,6 +27,13 @@ pub struct OAuthProviderConfig {
     /// default scopes.
     #[serde(default)]
     pub scopes: Option<ScopeSet>,
+    /// Don't check ID tokens' `iss` claim against the issuer from
+    /// discovery (`aud` is still checked). Only for providers whose
+    /// discovery document doesn't state the exact issuer, e.g. Microsoft
+    /// Entra's multi-tenant `common` endpoint. See
+    /// `oath::server::Provider::skip_issuer_validation`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub skip_issuer_validation: bool,
 }
 
 impl OAuthProviderConfig {
@@ -182,6 +189,7 @@ mod tests {
                 issuer: "https://issuer.example.com".parse().unwrap(),
             },
             scopes: None,
+            skip_issuer_validation: false,
         }
     }
 

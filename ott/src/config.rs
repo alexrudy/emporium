@@ -250,6 +250,8 @@ where
         }
     };
 
+    let skip_issuer_validation = parse_env(get, &var("SKIP_ISSUER_VALIDATION"), Some("false"))?;
+
     Ok(OAuthProviderConfig {
         external_origin: Some(external_origin.clone()),
         provider_name,
@@ -257,6 +259,7 @@ where
         client_secret: Some(client_secret),
         endpoints,
         scopes,
+        skip_issuer_validation,
     })
 }
 
@@ -340,6 +343,7 @@ struct RawOauth {
     issuer: Option<String>,
     auth_uri: Option<String>,
     token_uri: Option<String>,
+    skip_issuer_validation: Option<bool>,
 }
 
 /// `[providers.<id>]`.
@@ -353,6 +357,7 @@ struct RawProvider {
     issuer: Option<String>,
     auth_uri: Option<String>,
     token_uri: Option<String>,
+    skip_issuer_validation: Option<bool>,
 }
 
 impl RawProvider {
@@ -364,6 +369,7 @@ impl RawProvider {
             && self.issuer.is_none()
             && self.auth_uri.is_none()
             && self.token_uri.is_none()
+            && self.skip_issuer_validation.is_none()
     }
 
     /// Resolve into an [`OAuthProviderConfig`]. `path` is the TOML table
@@ -410,6 +416,7 @@ impl RawProvider {
             client_secret: Some(client_secret),
             endpoints,
             scopes,
+            skip_issuer_validation: self.skip_issuer_validation.unwrap_or(false),
         })
     }
 }
@@ -489,6 +496,7 @@ impl RawConfig {
             issuer: oauth.issuer,
             auth_uri: oauth.auth_uri,
             token_uri: oauth.token_uri,
+            skip_issuer_validation: oauth.skip_issuer_validation,
         };
         let root_provider = if !root.is_empty() || raw_providers.is_empty() {
             Some(root.into_provider("oauth", DEFAULT_PROVIDER_NAME, &external_origin)?)
@@ -873,6 +881,24 @@ mod tests {
     }
 
     #[test]
+    fn skip_issuer_validation_from_env() {
+        let cfg = build(minimal_env()).unwrap();
+        assert!(!root(&cfg).skip_issuer_validation);
+
+        let cfg = build(with_env(&[("OAUTH_SKIP_ISSUER_VALIDATION", "true")])).unwrap();
+        assert!(root(&cfg).skip_issuer_validation);
+
+        let mut env = named_env();
+        env.push(("OAUTH_MY_IDP_SKIP_ISSUER_VALIDATION", "true".to_owned()));
+        let cfg = build(env).unwrap();
+        assert!(cfg.providers[&id("my-idp")].skip_issuer_validation);
+        assert!(!cfg.providers[&id("google")].skip_issuer_validation);
+
+        let err = build(with_env(&[("OAUTH_SKIP_ISSUER_VALIDATION", "maybe")])).unwrap_err();
+        assert!(format!("{err:#}").contains("OAUTH_SKIP_ISSUER_VALIDATION"));
+    }
+
+    #[test]
     fn provider_list_rejects_env_clashes() {
         assert!(parse_provider_list("my-idp, my_idp").is_err());
         assert!(parse_provider_list("bad/id").is_err());
@@ -1094,6 +1120,35 @@ mod tests {
                 .to_string(),
             "http://127.0.0.1:3000/auth/okta/callback"
         );
+    }
+
+    #[test]
+    fn toml_skip_issuer_validation() {
+        let cfg = Config::from_toml_str(&named_toml("")).unwrap();
+        assert!(!cfg.providers[&id("okta")].skip_issuer_validation);
+
+        let key = test_cookie_key();
+        let body = format!(
+            r#"
+                [oauth]
+                client_id = "c"
+                client_secret = "s"
+                issuer = "https://login.microsoftonline.com/common/v2.0"
+                skip_issuer_validation = true
+
+                [providers.entra]
+                client_id = "e"
+                client_secret = "es"
+                issuer = "https://login.microsoftonline.com/common/v2.0"
+                skip_issuer_validation = true
+
+                [cookies]
+                key = "{key}"
+            "#,
+        );
+        let cfg = Config::from_toml_str(&body).unwrap();
+        assert!(root(&cfg).skip_issuer_validation);
+        assert!(cfg.providers[&id("entra")].skip_issuer_validation);
     }
 
     #[test]

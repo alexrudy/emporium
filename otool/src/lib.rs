@@ -89,9 +89,12 @@ async fn resolve(
 }
 
 fn customize(provider: Provider, config: &OAuthProviderConfig) -> Provider {
-    let provider = provider.with_display_name(config.provider_name.clone());
-    match &config.scopes {
-        Some(scopes) => provider.with_scopes(scopes.clone()),
-        None => provider,
+    let mut provider = provider.with_display_name(config.provider_name.clone());
+    if let Some(scopes) = &config.scopes {
+        provider = provider.with_scopes(scopes.clone());
     }
+    if config.skip_issuer_validation {
+        provider = provider.skip_issuer_validation();
+    }
+    provider
 }
