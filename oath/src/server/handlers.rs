@@ -84,9 +84,16 @@ where
     let mut auth_uri =
         AuthorizationUrl::new(provider.endpoint()).scopes(provider.effective_scopes(&state.config));
 
-    if let Some(callback) = &redirect {
-        let redirect = callback.from_request_parts(&mut parts).await?;
-        auth_uri = auth_uri.with_redirect(redirect);
+    // With an origin extractor, the redirect URI is always this
+    // provider's callback route on the request's public host. Otherwise
+    // the endpoint's configured redirect URI is used. Either way,
+    // `PendingAuthorization` records the value sent so the token
+    // exchange can repeat it.
+    if let Some(extract) = &redirect {
+        let origin = extract.from_request_parts(&mut parts).await?;
+        let callback =
+            super::redirect::callback_uri(&origin, &provider.callback_path(&state.config))?;
+        auth_uri = auth_uri.with_redirect(callback);
     }
 
     let (url, pending) = auth_uri.begin()?;

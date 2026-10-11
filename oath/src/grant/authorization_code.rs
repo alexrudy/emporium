@@ -1,16 +1,19 @@
 //! RFC 6749 §4.1.3 — Authorization Code grant (with optional PKCE).
 
+use http::Uri;
+
 use crate::pkce::PkceVerifier;
 
 /// Request a token by exchanging an authorization code.
 ///
 /// `redirect_uri` is taken from the [`crate::endpoint::TokenEndpoint`]
-/// configuration; the grant struct only carries values specific to the
-/// individual exchange.
+/// configuration unless overridden with
+/// [`redirect_uri`](Self::redirect_uri).
 #[derive(Debug, Clone)]
 pub struct AuthorizationCodeRequest {
     pub(crate) code: String,
     pub(crate) pkce_verifier: Option<PkceVerifier>,
+    pub(crate) redirect_uri: Option<Uri>,
 }
 
 impl AuthorizationCodeRequest {
@@ -19,7 +22,18 @@ impl AuthorizationCodeRequest {
         Self {
             code: code.into(),
             pkce_verifier: None,
+            redirect_uri: None,
         }
+    }
+
+    /// Send this `redirect_uri` instead of the token endpoint's.
+    ///
+    /// Per RFC 6749 §4.1.3 it must match the value used in the
+    /// authorization request, so set this whenever the authorization
+    /// URL overrode the endpoint's redirect URI.
+    pub fn redirect_uri(mut self, uri: Uri) -> Self {
+        self.redirect_uri = Some(uri);
+        self
     }
 
     /// Attach a PKCE verifier (RFC 7636).

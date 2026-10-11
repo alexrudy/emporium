@@ -239,7 +239,14 @@ where
         self
     }
 
-    /// Set the redirect target for the callback URI.
+    /// Derive each provider's redirect URI from the request's public
+    /// origin: the extracted scheme + host joined to the provider's
+    /// callback path (e.g. `https://app1.example.com/auth/google/callback`).
+    ///
+    /// This overrides the `redirect_uri` configured on each provider's
+    /// [`TokenEndpoint`], for both the authorization request and the
+    /// code exchange. Use [`TrustedHeader`] when serving several hosts
+    /// behind a proxy, or a fixed [`Uri`] origin for a single host.
     pub fn redirect(mut self, redirect: Arc<C>) -> Self {
         self.redirect = Some(redirect);
         self

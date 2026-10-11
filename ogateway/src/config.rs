@@ -46,6 +46,11 @@ pub struct ServerConfig {
     /// The address to bind the server to.
     pub bind_addr: SocketAddr,
 
+    /// Header, set by the reverse proxy, carrying the request's public
+    /// origin (e.g. `https://app.example.com`). Each provider's redirect
+    /// URI is that origin joined to its callback path, which lets one
+    /// gateway authenticate several hostnames. Only the header's scheme
+    /// and host are used.
     #[serde(default)]
     pub trusted_header: Option<String>,
 

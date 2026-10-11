@@ -248,7 +248,7 @@ mod serde_uri {
     }
 }
 
-mod serde_uri_opt {
+pub(crate) mod serde_uri_opt {
     use http::Uri;
     use serde::de::Visitor;
 

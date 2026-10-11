@@ -16,11 +16,11 @@ use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use common::ScriptedMock;
 use cookie::Key;
-use http::{Request, StatusCode, Uri, header};
+use http::{HeaderName, Request, StatusCode, Uri, header};
 use oath::TokenEndpoint;
 use oath::server::{
     Identity, IdentityResolver, InMemorySessionStore, OAuth2Router, Provider, ProviderId,
-    SessionData, SessionId, SessionStore as _, UserStore, parse_id_token,
+    SessionData, SessionId, SessionStore as _, TrustedHeader, UserStore, parse_id_token,
 };
 use secret::Secret;
 use tower::ServiceExt as _;
@@ -326,6 +326,141 @@ async fn new_keeps_root_paths_alongside_added_providers() {
 
     let (url, _) = begin_login(&router, "/auth/google/login").await;
     assert_eq!(url.host_str(), Some("google.example.com"));
+}
+
+fn trusted_header_router(mock: &ScriptedMock, users: MemoryUsers) -> Router {
+    let identity = IdentityResolver::with_provider(|provider: ProviderId, tokens| async move {
+        let claims = parse_id_token(&tokens)?;
+        Ok(Identity {
+            username: format!("{provider}:{}", claims.sub),
+            data: claims.sub,
+        })
+    });
+    OAuth2Router::<_, _, TrustedHeader>::new(
+        endpoint("legacy", mock),
+        InMemorySessionStore::default(),
+        users,
+        identity,
+        Key::generate(),
+    )
+    .provider(Provider::new(id("google"), endpoint("google", mock)))
+    .provider(Provider::new(id("okta"), endpoint("okta", mock)))
+    .redirect(Arc::new(TrustedHeader::from(HeaderName::from_static(
+        "x-gateway-origin",
+    ))))
+    .secure_cookies(false)
+    .into_router()
+}
+
+async fn login_via_header(router: &Router, path: &str, origin: &str) -> (url::Url, String) {
+    let resp = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(path)
+                .header("x-gateway-origin", origin)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(
+        resp.status().is_redirection(),
+        "{path} -> {}",
+        resp.status()
+    );
+    let location: url::Url = resp.headers()[header::LOCATION]
+        .to_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+    let preauth = format!(
+        "oath_preauth={}",
+        cookie_value(resp.headers(), "oath_preauth").unwrap()
+    );
+    (location, preauth)
+}
+
+#[tokio::test]
+async fn trusted_header_gives_each_provider_and_host_its_own_callback() {
+    let mock = ScriptedMock::new();
+    let router = trusted_header_router(&mock, MemoryUsers::default());
+
+    let cases = [
+        // Bare origin, as recommended.
+        (
+            "/auth/google/login",
+            "https://app1.example.com",
+            "https://app1.example.com/auth/google/callback",
+        ),
+        // A full callback URL (the old header format) is reduced to its origin.
+        (
+            "/auth/okta/login",
+            "http://app2.example.com:8080/auth/callback",
+            "http://app2.example.com:8080/auth/okta/callback",
+        ),
+        // The provider from `new` keeps the root callback path.
+        (
+            "/auth/login",
+            "https://app2.example.com",
+            "https://app2.example.com/auth/callback",
+        ),
+    ];
+    for (path, origin, expected) in cases {
+        let (url, _) = login_via_header(&router, path, origin).await;
+        assert_eq!(
+            query(&url, "redirect_uri").as_deref(),
+            Some(expected),
+            "{path} via {origin}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn exchange_repeats_the_redirect_uri_sent_to_the_provider() {
+    let mock = ScriptedMock::new();
+    mock.enqueue_json("/google/token", StatusCode::OK, &token_response("g-1"));
+    mock.enqueue_json("/google/token", StatusCode::OK, &token_response("g-2"));
+    let users = MemoryUsers::default();
+    let router = trusted_header_router(&mock, users.clone());
+
+    for (origin, sub) in [
+        ("https://app1.example.com", "g-1"),
+        ("https://app2.example.com", "g-2"),
+    ] {
+        let (url, preauth) = login_via_header(&router, "/auth/google/login", origin).await;
+        let sent = query(&url, "redirect_uri").unwrap();
+        assert_eq!(sent, format!("{origin}/auth/google/callback"));
+
+        let state = query(&url, "state").unwrap();
+        let resp = get(
+            &router,
+            &format!("/auth/google/callback?code=c&state={state}"),
+            Some(&preauth),
+        )
+        .await;
+        assert!(
+            resp.status().is_redirection(),
+            "callback -> {}",
+            resp.status()
+        );
+        assert!(users.get(&format!("google:{sub}")).await.unwrap().is_some());
+
+        let exchange = mock
+            .requests()
+            .into_iter()
+            .rfind(|r| r.path == "/google/token")
+            .unwrap();
+        assert_eq!(exchange.form().get("redirect_uri"), Some(&sent));
+    }
+}
+
+#[tokio::test]
+async fn trusted_header_missing_is_400() {
+    let mock = ScriptedMock::new();
+    let router = trusted_header_router(&mock, MemoryUsers::default());
+    let resp = get(&router, "/auth/google/login", None).await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
 #[test]

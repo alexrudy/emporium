@@ -23,3 +23,28 @@ localhost:8080 {
     	respond "Hello, world!"
 	}
 }
+
+(gateway) {
+	route {
+		reverse_proxy /auth/* unix//run/gateway/gateway.sock {
+			# Public origin of this host; ogateway appends each provider's
+			# callback path. (A full callback URL also works: only the scheme
+			# and host are used.)
+			header_up X-Gateway-Callback {scheme}://{host}
+			transport http {
+				versions 1.1
+			}
+		}
+
+		forward_auth unix//run/gateway/gateway.sock {
+			uri /proxy/verify
+			transport http {
+				versions 1.1
+			}
+			@error status 403
+			handle_response @error {
+				redir * {scheme}://{host}/auth/login
+			}
+		}
+	}
+}
