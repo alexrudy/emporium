@@ -4,7 +4,7 @@ members = [
     "api-client",
     "bookshelf",
     "echocache", "formdata",
-    "oath", "ogateway", "otool",
+    "oath", "ogateway", "olite", "otool",
     "ott",
     "otunnel",
     "secret",
@@ -54,6 +54,7 @@ parking_lot = "0.12"
 percent-encoding = "2"
 pin-project = "1"
 rand = "0.10"
+rusqlite = "0.40"
 rust-embed = "8.11.0"
 sentry = { version = "0.49.1", default-features = false }
 serde = { version = "1", features = ["derive"] }

@@ -1,0 +1,32 @@
+[package]
+name = "olite"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "SQLite-backed session and user stores for oath's server"
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+oath = { path = "../oath", features = ["server"] }
+parking_lot.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt"] }
+
+[dev-dependencies]
+oath = { path = "../oath", features = ["server", "tls-ring"] }
+tempfile.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "time"] }
+
+[features]
+default = ["bundled"]
+# Compile SQLite from source rather than linking the system library.
+bundled = ["rusqlite/bundled"]
+tls-ring = ["oath/tls-ring"]
+tls-aws-lc = ["oath/tls-aws-lc"]
+
+[lints]
+workspace = true
