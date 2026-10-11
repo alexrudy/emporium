@@ -97,3 +97,9 @@ verify_route = "/proxy/verify"
 
 [sessions]
 key = "czQckxOIiK4pUqc2z1XsaG+YLSWg+cv7p3PueCMkx3ByjchuoGbh5G+E/NS0IlNeSKUAnNljfaHsJ9fcvpCFhQ=="
+
+# Where sessions and user profiles are kept. Default: in memory, so a
+# restart signs everyone out. "sqlite" needs the `sqlite` cargo feature.
+# [sessions.store]
+# backend = "sqlite"
+# path = "auth.sqlite3"

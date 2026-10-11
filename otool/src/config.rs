@@ -9,6 +9,8 @@ use secret::Secret;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::store::StoreConfig;
+
 /// Configuration for the session management system.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -18,6 +20,10 @@ pub struct SessionsConfig {
 
     /// The secret key used for signing session cookies.
     pub key: Secret,
+
+    /// Where sessions and user profiles are stored (`[sessions.store]`).
+    /// Defaults to memory.
+    pub store: StoreConfig,
 }
 
 impl Default for SessionsConfig {
@@ -27,6 +33,7 @@ impl Default for SessionsConfig {
             key: data_encoding::BASE64
                 .encode(Key::generate().master())
                 .into(),
+            store: StoreConfig::default(),
         }
     }
 }

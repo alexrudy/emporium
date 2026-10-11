@@ -2,6 +2,7 @@
 name = "otool"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
 
 [dependencies]
 async-trait.workspace = true
@@ -13,6 +14,7 @@ data-encoding.workspace = true
 futures.workspace = true
 http.workspace = true
 oath = { path = "../oath", features = ["server"] }
+olite = { path = "../olite", optional = true }
 secret.path = "../secret"
 serde.workspace = true
 thiserror.workspace = true
@@ -23,10 +25,14 @@ tracing.workspace = true
 oath = { path = "../oath", features = ["server", "tls-ring"] }
 serde_json.workspace = true
 serde_urlencoded.workspace = true
+
+toml.workspace = true
 tokio = { workspace = true, features = ["macros", "rt", "net", "time"] }
 tower = { workspace = true, features = ["util"] }
 
 [features]
+# Allow `[sessions.store] backend = "sqlite"`.
+sqlite = ["dep:olite"]
 tls-ring = ["oath/tls-ring"]
 tls-aws-lc = ["oath/tls-aws-lc"]
 

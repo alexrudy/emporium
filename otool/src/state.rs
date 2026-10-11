@@ -1,13 +1,11 @@
 //! Application state management, holding configuration and session state.
 
-use std::time::Duration;
-
 use axum::extract::FromRef;
 use cookie::Key;
-use oath::server::{InMemorySessionStore, OAuth2RouterConfig};
+use oath::server::OAuth2RouterConfig;
 
 use crate::config::{ProvidersConfig, SessionsConfig};
-use crate::user::InMemoryUserStore;
+use crate::store::{Sessions, StoreError, Stores, Users};
 
 /// The application state, holding configuration and session state.
 #[derive(Debug, Clone)]
@@ -22,26 +20,32 @@ pub struct AppState {
     pub sessions: SessionsConfig,
 
     /// The session store for managing user sessions.
-    pub sessions_store: InMemorySessionStore,
+    pub sessions_store: Sessions,
 
     /// Profiles (display names) of users who have signed in.
-    pub users_store: InMemoryUserStore,
+    pub users_store: Users,
 }
 
 impl AppState {
-    /// Creates a new `AppState` with the given configuration.
-    pub fn new(
+    /// Creates a new `AppState`, opening the stores configured in
+    /// `sessions.store`. Sessions expire after `sessions.ttl`.
+    pub async fn new(
         router: OAuth2RouterConfig,
         providers: ProvidersConfig,
         sessions: SessionsConfig,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, StoreError> {
+        let ttl = sessions.ttl.to_std().map_err(|_| StoreError::NegativeTtl)?;
+        let Stores {
+            sessions: sessions_store,
+            users: users_store,
+        } = sessions.store.open(ttl).await?;
+        Ok(Self {
             oauth_router: router,
             providers,
             sessions,
-            sessions_store: InMemorySessionStore::new(Duration::from_hours(48)),
-            users_store: InMemoryUserStore::new(),
-        }
+            sessions_store,
+            users_store,
+        })
     }
 }
 
