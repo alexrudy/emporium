@@ -62,7 +62,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    let state = AppState::new(config.oath, config.providers, config.sessions);
+    let state = AppState::new(config.oath, config.providers, config.sessions).await?;
 
     let middleware = tower::ServiceBuilder::new()
         .layer(CatchPanicLayer::new())

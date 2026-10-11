@@ -94,12 +94,14 @@ mod tests {
     use crate::config::{ProvidersConfig, SessionsConfig};
     use crate::user::UserProfile;
 
-    fn state() -> AppState {
+    async fn state() -> AppState {
         AppState::new(
             Default::default(),
             ProvidersConfig::default(),
             SessionsConfig::default(),
         )
+        .await
+        .unwrap()
     }
 
     /// A request carrying a session cookie for `provider`/`username`,
@@ -135,7 +137,7 @@ mod tests {
 
     #[tokio::test]
     async fn loads_user_with_display_name() {
-        let state = state();
+        let state = state().await;
         let google = ProviderId::new("google").unwrap();
         state
             .users_store
@@ -162,7 +164,7 @@ mod tests {
 
     #[tokio::test]
     async fn missing_profile_still_authenticates() {
-        let state = state();
+        let state = state().await;
         let google = ProviderId::new("google").unwrap();
         let key = Key::from_ref(&state);
         let mut parts = request_for(&state, &key, &google, "abc").await;
@@ -174,7 +176,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_missing_or_forged_cookie() {
-        let state = state();
+        let state = state().await;
         let mut parts = http::Request::builder().body(()).unwrap().into_parts().0;
         assert_eq!(
             CurrentUser::from_request_parts(&mut parts, &state)

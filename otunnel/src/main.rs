@@ -41,7 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // its `Debug` impl redacts it.
     tracing::debug!(?config, "loaded configuration");
 
-    let state = AppState::new(config.clone(), args.upstream.parse()?);
+    let state = AppState::new(config.clone(), args.upstream.parse()?).await?;
     let router = app::build(&state, &config).await?;
 
     let listener = tokio::net::TcpListener::bind(config.server.bind_addr)

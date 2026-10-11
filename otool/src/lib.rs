@@ -5,9 +5,11 @@
 //!
 //! - [`config::ProvidersConfig`]: `[provider]`, `[providers.<id>]`, and
 //!   `default_provider`, meant to be `#[serde(flatten)]`ed into an app's
-//!   config; [`config::SessionsConfig`] for the cookie key and TTL.
-//! - [`state::AppState`]: router config, providers, and the in-memory
-//!   session store.
+//!   config; [`config::SessionsConfig`] for the cookie key, TTL, and
+//!   storage backend.
+//! - [`store`]: the session and user stores, picked in config by
+//!   [`store::StoreConfig`] from the backends enabled by cargo features.
+//! - [`state::AppState`]: router config, providers, and the stores.
 //! - [`build_router`]: resolves every provider (running OIDC discovery)
 //!   and registers it with an [`OAuth2Router`]; [`router_with_chooser`]
 //!   turns that into an `axum::Router`, adding a "Sign in with …" page at
@@ -16,23 +18,26 @@
 //!   that load the signed-in [`user::AppUser`] (provider, `sub`, and
 //!   display name) from the session cookie.
 //!
-//! Users aren't persisted: [`user::InMemoryUserStore`] only remembers
-//! who has signed in since startup, and their display name.
+//! By default sessions and users live in memory and are lost on restart;
+//! with the `sqlite` or `valkey` feature, `[sessions.store]` can keep
+//! them in a SQLite database or a Valkey server instead.
 
 use std::time::Duration;
 
 use cookie::Key;
-use oath::server::{InMemorySessionStore, OAuth2Router, Provider, ProviderId};
+use oath::server::{OAuth2Router, Provider, ProviderId};
 use thiserror::Error;
 
 use self::config::{OAuthProviderConfig, ProvidersConfigError};
-use self::{state::AppState, user::InMemoryUserStore};
+use self::state::AppState;
+use self::store::{Sessions, Users};
 
 pub mod auth;
 pub mod chooser;
 pub mod config;
 pub mod cookies;
 pub mod state;
+pub mod store;
 pub mod user;
 
 pub use self::chooser::{login_chooser, router_with_chooser};
@@ -95,14 +100,14 @@ pub enum ProviderSetupError {
 /// chooser). Only if *every* provider fails is this an error.
 pub async fn build_router<C>(
     state: &AppState,
-) -> Result<OAuth2Router<InMemorySessionStore, InMemoryUserStore, C>, BuildError> {
+) -> Result<OAuth2Router<Sessions, Users, C>, BuildError> {
     build_router_with_timeout(state, PROVIDER_SETUP_TIMEOUT).await
 }
 
 async fn build_router_with_timeout<C>(
     state: &AppState,
     timeout: Duration,
-) -> Result<OAuth2Router<InMemorySessionStore, InMemoryUserStore, C>, BuildError> {
+) -> Result<OAuth2Router<Sessions, Users, C>, BuildError> {
     let providers = &state.providers;
     providers.validate()?;
     let router_config = &state.oauth_router;
@@ -265,7 +270,9 @@ mod tests {
             Default::default(),
             providers,
             config::SessionsConfig::default(),
-        );
+        )
+        .await
+        .unwrap();
 
         let oauth = build_router_with_timeout::<http::Uri>(&state, Duration::from_millis(200))
             .await

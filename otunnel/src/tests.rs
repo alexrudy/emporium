@@ -81,7 +81,7 @@ fn config() -> Config {
 
 async fn otunnel(upstream: Authority) -> (Router, AppState) {
     let config = config();
-    let state = AppState::new(config.clone(), upstream);
+    let state = AppState::new(config.clone(), upstream).await.unwrap();
     let router = crate::app::build(&state, &config).await.unwrap();
     (router, state)
 }

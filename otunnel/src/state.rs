@@ -14,11 +14,15 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(config: Config, upstream: Authority) -> Self {
-        Self {
-            inner: otool::state::AppState::new(config.oath, config.providers, config.sessions),
+    pub async fn new(
+        config: Config,
+        upstream: Authority,
+    ) -> Result<Self, otool::store::StoreError> {
+        Ok(Self {
+            inner: otool::state::AppState::new(config.oath, config.providers, config.sessions)
+                .await?,
             upstream,
-        }
+        })
     }
 
     pub fn rewrite_uri(&self, uri: &Uri) -> Uri {

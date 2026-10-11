@@ -27,7 +27,9 @@ async fn app(providers: ProvidersConfig) -> Router {
         OAuth2RouterConfig::default(),
         providers,
         SessionsConfig::default(),
-    );
+    )
+    .await
+    .unwrap();
     router_with_chooser(build_router::<http::Uri>(&state).await.unwrap())
 }
 
@@ -196,7 +198,9 @@ async fn every_provider_unavailable_is_an_error() {
         OAuth2RouterConfig::default(),
         providers,
         SessionsConfig::default(),
-    );
+    )
+    .await
+    .unwrap();
 
     let err = build_router::<http::Uri>(&state).await.unwrap_err();
     let message = err.to_string();
@@ -213,6 +217,8 @@ async fn invalid_config_is_an_error() {
         OAuth2RouterConfig::default(),
         ProvidersConfig::default(),
         SessionsConfig::default(),
-    );
+    )
+    .await
+    .unwrap();
     assert!(build_router::<http::Uri>(&state).await.is_err());
 }
