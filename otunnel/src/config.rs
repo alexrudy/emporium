@@ -28,23 +28,37 @@ pub struct Config {
 }
 
 impl Config {
-    /// Load configuration from a file
+    /// Load configuration from a file, overridden by `OTUNNEL_*`
+    /// environment variables (see [`env_source`]).
     pub fn from_file(path: impl Into<PathBuf>) -> Result<Self, ConfigError> {
         let path = path.into();
         let settings = config::Config::builder()
             .add_source(config::File::from(path))
-            .add_source(config::Environment::with_prefix("OTUNNEL"))
+            .add_source(env_source())
             .build()?;
         settings.try_deserialize()
     }
 
+    /// Load configuration from `OTUNNEL_*` environment variables only (see
+    /// [`env_source`]).
     pub fn from_env() -> Result<Self, ConfigError> {
-        let settings = config::Config::builder()
-            .add_source(config::Environment::with_prefix("OTUNNEL"))
-            .build()?;
+        let settings = config::Config::builder().add_source(env_source()).build()?;
 
         settings.try_deserialize()
     }
+}
+
+/// `OTUNNEL_*` environment variables, with `__` separating nested keys:
+/// `OTUNNEL_SERVER__BIND_ADDR` is `server.bind_addr`, and
+/// `OTUNNEL_PROVIDERS__GOOGLE__CLIENT_ID` is `providers.google.client_id`.
+///
+/// Values stay strings (no type guessing), so numeric client ids aren't
+/// turned into integers. Keys are lowercased, which matches provider ids
+/// (always lowercase): `…__GOOGLE__…` configures `[providers.google]`.
+fn env_source() -> config::Environment {
+    config::Environment::with_prefix("OTUNNEL")
+        .prefix_separator("_")
+        .separator("__")
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,5 +119,53 @@ mod tests {
             assert!(!debug.contains(secret), "{secret} leaked: {debug}");
         }
         assert!(debug.contains("otunnel"), "non-secret fields still shown");
+    }
+
+    #[test]
+    fn multi_provider_config_from_env_only() {
+        let vars = [
+            ("OTUNNEL_PROVIDER__CLIENT_ID", "42"),
+            ("OTUNNEL_PROVIDER__PROVIDER_NAME", "Bastion"),
+            (
+                "OTUNNEL_PROVIDER__EXTERNAL_ORIGIN",
+                "https://tunnel.example.com",
+            ),
+            (
+                "OTUNNEL_PROVIDER__ENDPOINTS__ISSUER",
+                "https://idp.example.com",
+            ),
+            ("OTUNNEL_PROVIDERS__GOOGLE__CLIENT_ID", "g"),
+            ("OTUNNEL_PROVIDERS__GOOGLE__PROVIDER_NAME", "Google"),
+            (
+                "OTUNNEL_PROVIDERS__GOOGLE__EXTERNAL_ORIGIN",
+                "https://tunnel.example.com",
+            ),
+            ("OTUNNEL_PROVIDERS__GOOGLE__SKIP_ISSUER_VALIDATION", "true"),
+            (
+                "OTUNNEL_PROVIDERS__GOOGLE__ENDPOINTS__ISSUER",
+                "https://accounts.google.com",
+            ),
+            ("OTUNNEL_SERVER__BIND_ADDR", "127.0.0.1:3030"),
+            ("OTUNNEL_SESSIONS__KEY", "session-key"),
+        ];
+        let config: Config = config::Config::builder()
+            .add_source(
+                env_source().source(Some(
+                    vars.iter()
+                        .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+                        .collect(),
+                )),
+            )
+            .build()
+            .unwrap()
+            .try_deserialize()
+            .unwrap();
+
+        let root = config.providers.provider.as_ref().unwrap();
+        assert_eq!(root.client_id, "42");
+        let google = &config.providers.providers[&"google".parse().unwrap()];
+        assert!(google.skip_issuer_validation);
+        assert_eq!(config.server.bind_addr.to_string(), "127.0.0.1:3030");
+        assert!(config.providers.validate().is_ok());
     }
 }

@@ -32,7 +32,16 @@ pub struct OAuthProviderConfig {
     /// discovery document doesn't state the exact issuer, e.g. Microsoft
     /// Entra's multi-tenant `common` endpoint. See
     /// `oath::server::Provider::skip_issuer_validation`.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    ///
+    /// Accepts `"true"` / `"false"` strings as well as booleans, so it can
+    /// be set from environment variables even when this struct is
+    /// `#[serde(flatten)]`ed (which stops config loaders from converting
+    /// strings for us).
+    #[serde(
+        default,
+        deserialize_with = "bool_or_string::deserialize",
+        skip_serializing_if = "std::ops::Not::not"
+    )]
     pub skip_issuer_validation: bool,
     /// How to treat the RFC 9207 `iss` parameter on authorization
     /// responses. Defaults to [`IssParameter::Auto`].
@@ -273,6 +282,33 @@ mod tests {
     }
 
     #[test]
+    fn skip_issuer_validation_accepts_bools_and_strings() {
+        let parse = |value: serde_json::Value| {
+            serde_json::from_value::<OAuthProviderConfig>(serde_json::json!({
+                "provider_name": "Test",
+                "client_id": "c",
+                "endpoints": { "issuer": "https://issuer.example.com" },
+                "skip_issuer_validation": value,
+            }))
+            .map(|config| config.skip_issuer_validation)
+        };
+
+        for (value, expected) in [
+            (serde_json::json!(true), true),
+            (serde_json::json!(false), false),
+            (serde_json::json!("true"), true),
+            (serde_json::json!("False"), false),
+            (serde_json::json!("yes"), true),
+            (serde_json::json!("0"), false),
+            (serde_json::json!(1), true),
+        ] {
+            assert_eq!(parse(value.clone()).unwrap(), expected, "{value}");
+        }
+        assert!(parse(serde_json::json!("maybe")).is_err());
+        assert!(parse(serde_json::json!(2)).is_err());
+    }
+
+    #[test]
     fn redirect_uri_without_origin_is_relative() {
         let cfg = config(None);
         assert_eq!(
@@ -315,6 +351,59 @@ mod serde_uri {
         S: serde::Serializer,
     {
         serializer.serialize_str(&uri.to_string())
+    }
+}
+
+/// Deserialize a bool from a boolean or a string (`true`/`false`,
+/// `yes`/`no`, `on`/`off`, `1`/`0`, case-insensitive).
+mod bool_or_string {
+    use std::fmt;
+
+    use serde::de::{self, Visitor};
+
+    pub(super) fn deserialize<'de, D>(deserializer: D) -> Result<bool, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct BoolVisitor;
+
+        impl Visitor<'_> for BoolVisitor {
+            type Value = bool;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("a boolean, or a string like \"true\" or \"false\"")
+            }
+
+            fn visit_bool<E: de::Error>(self, v: bool) -> Result<bool, E> {
+                Ok(v)
+            }
+
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<bool, E> {
+                match v.trim().to_ascii_lowercase().as_str() {
+                    "true" | "yes" | "on" | "1" => Ok(true),
+                    "false" | "no" | "off" | "0" => Ok(false),
+                    _ => Err(E::invalid_value(de::Unexpected::Str(v), &self)),
+                }
+            }
+
+            fn visit_u64<E: de::Error>(self, v: u64) -> Result<bool, E> {
+                match v {
+                    0 => Ok(false),
+                    1 => Ok(true),
+                    _ => Err(E::invalid_value(de::Unexpected::Unsigned(v), &self)),
+                }
+            }
+
+            fn visit_i64<E: de::Error>(self, v: i64) -> Result<bool, E> {
+                match v {
+                    0 => Ok(false),
+                    1 => Ok(true),
+                    _ => Err(E::invalid_value(de::Unexpected::Signed(v), &self)),
+                }
+            }
+        }
+
+        deserializer.deserialize_any(BoolVisitor)
     }
 }
 

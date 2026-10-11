@@ -109,12 +109,41 @@ Every provider table accepts the same fields:
 
 Register `<origin>/auth/callback` with the `[provider]` provider and
 `<origin>/auth/<id>/callback` with each `[providers.<id>]`. Provider ids
-may contain ASCII letters, digits, `-`, and `_`.
+may contain lowercase ASCII letters, digits, `-`, and `_`; uppercase is
+rejected at startup.
 
 Startup fails if no provider is configured, if `[providers.default]` is
 combined with `[provider]` (they share the id `default`), if
 `default_provider` names an unknown provider, or if it's combined with
 `[provider]`.
+
+### Environment variables
+
+`ogateway` and `otunnel` read the same settings from environment
+variables (prefixed `OGATEWAY_` / `OTUNNEL_`), which override the config
+file. Nested keys are separated by a **double** underscore, since field
+names already contain single ones:
+
+| Config key                              | Environment variable (`ogateway`)                   |
+|-----------------------------------------|-----------------------------------------------------|
+| `default_provider`                      | `OGATEWAY_DEFAULT_PROVIDER`                         |
+| `[provider] client_id`                  | `OGATEWAY_PROVIDER__CLIENT_ID`                      |
+| `[provider.endpoints] issuer`           | `OGATEWAY_PROVIDER__ENDPOINTS__ISSUER`              |
+| `[providers.google] client_secret`      | `OGATEWAY_PROVIDERS__GOOGLE__CLIENT_SECRET`         |
+| `[providers.google] skip_issuer_validation` | `OGATEWAY_PROVIDERS__GOOGLE__SKIP_ISSUER_VALIDATION` |
+| `[oath] secure_cookies`                 | `OGATEWAY_OATH__SECURE_COOKIES`                     |
+| `[sessions] key`                        | `OGATEWAY_SESSIONS__KEY`                            |
+
+- **Variable names are case-insensitive**: `OGATEWAY_PROVIDERS__GOOGLE__…`
+  configures provider `google`, the same one as `[providers.google]` in
+  the file (ids are always lowercase). A `-` can't be written in a
+  variable name, so a provider like `my-idp` can only be configured from
+  the file; use `_` (`my_idp`) if you need env vars.
+- Values are taken as strings (numeric client ids stay strings).
+  `skip_issuer_validation` accepts `true`/`false`, `yes`/`no`, `on`/`off`,
+  or `1`/`0`.
+- An environment variable overrides just that field: a provider defined
+  in the file can get its secret from `…__CLIENT_SECRET`.
 
 ### Provider setup failures
 

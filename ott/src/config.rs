@@ -935,6 +935,33 @@ mod tests {
         assert!(parse_provider_list("bad/id").is_err());
     }
 
+    #[test]
+    fn provider_ids_must_be_lowercase() {
+        let msg = format!("{:#}", parse_provider_list("google, Okta").unwrap_err());
+        assert!(
+            msg.contains("OAUTH_PROVIDERS") && msg.contains("lowercase"),
+            "{msg}"
+        );
+
+        let key = test_cookie_key();
+        let body = format!(
+            r#"
+                [providers.Okta]
+                client_id = "o"
+                client_secret = "os"
+                issuer = "https://okta.example.com"
+
+                [cookies]
+                key = "{key}"
+            "#,
+        );
+        let msg = format!("{:#}", Config::from_toml_str(&body).unwrap_err());
+        assert!(
+            msg.contains("providers.Okta") && msg.contains("lowercase"),
+            "{msg}"
+        );
+    }
+
     // ─── TOML loader tests ─────────────────────────────────────────
 
     fn minimal_toml() -> String {

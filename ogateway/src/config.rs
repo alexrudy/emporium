@@ -26,23 +26,38 @@ pub struct Config {
 }
 
 impl Config {
-    /// Load configuration from a file
+    /// Load configuration from a file, overridden by `OGATEWAY_*`
+    /// environment variables (see [`env_source`]).
     pub fn from_file(path: impl Into<PathBuf>) -> Result<Self, ConfigError> {
         let path = path.into();
         let settings = config::Config::builder()
             .add_source(config::File::from(path))
-            .add_source(config::Environment::with_prefix("OGATEWAY"))
+            .add_source(env_source())
             .build()?;
         settings.try_deserialize()
     }
 
+    /// Load configuration from `OGATEWAY_*` environment variables only
+    /// (see [`env_source`]).
     pub fn from_env() -> Result<Self, ConfigError> {
-        let settings = config::Config::builder()
-            .add_source(config::Environment::with_prefix("OGATEWAY"))
-            .build()?;
+        let settings = config::Config::builder().add_source(env_source()).build()?;
 
         settings.try_deserialize()
     }
+}
+
+/// `OGATEWAY_*` environment variables, with `__` separating nested keys:
+/// `OGATEWAY_SERVER__BIND_ADDR` is `server.bind_addr`, and
+/// `OGATEWAY_PROVIDERS__GOOGLE__CLIENT_ID` is
+/// `providers.google.client_id`.
+///
+/// Values stay strings (no type guessing), so numeric client ids aren't
+/// turned into integers. Keys are lowercased, which matches provider ids
+/// (always lowercase): `…__GOOGLE__…` configures `[providers.google]`.
+fn env_source() -> config::Environment {
+    config::Environment::with_prefix("OGATEWAY")
+        .prefix_separator("_")
+        .separator("__")
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -222,6 +237,143 @@ mod tests {
         assert!(cfg.origin().is_err());
     }
 
+    fn env(vars: &[(&str, &str)]) -> config::Environment {
+        env_source().source(Some(
+            vars.iter()
+                .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+                .collect(),
+        ))
+    }
+
+    fn from_env_vars(vars: &[(&str, &str)]) -> Config {
+        config::Config::builder()
+            .add_source(env(vars))
+            .build()
+            .unwrap()
+            .try_deserialize()
+            .unwrap()
+    }
+
+    #[test]
+    fn multi_provider_config_from_env_only() {
+        let cfg = from_env_vars(&[
+            ("OGATEWAY_DEFAULT_PROVIDER", "google"),
+            ("OGATEWAY_PROVIDERS__GOOGLE__CLIENT_ID", "123456789"),
+            ("OGATEWAY_PROVIDERS__GOOGLE__CLIENT_SECRET", "g-secret"),
+            ("OGATEWAY_PROVIDERS__GOOGLE__PROVIDER_NAME", "Google"),
+            ("OGATEWAY_PROVIDERS__GOOGLE__SCOPES", "openid email"),
+            ("OGATEWAY_PROVIDERS__GOOGLE__SKIP_ISSUER_VALIDATION", "true"),
+            ("OGATEWAY_PROVIDERS__GOOGLE__ISS_PARAMETER", "ignored"),
+            (
+                "OGATEWAY_PROVIDERS__GOOGLE__ENDPOINTS__ISSUER",
+                "https://accounts.google.com",
+            ),
+            ("OGATEWAY_PROVIDERS__MY_IDP__CLIENT_ID", "m"),
+            ("OGATEWAY_PROVIDERS__MY_IDP__PROVIDER_NAME", "Mine"),
+            (
+                "OGATEWAY_PROVIDERS__MY_IDP__EXTERNAL_ORIGIN",
+                "https://gw.example.com",
+            ),
+            (
+                "OGATEWAY_PROVIDERS__MY_IDP__ENDPOINTS__AUTH_URI",
+                "https://idp.example.com/authorize",
+            ),
+            (
+                "OGATEWAY_PROVIDERS__MY_IDP__ENDPOINTS__TOKEN_URI",
+                "https://idp.example.com/token",
+            ),
+            ("OGATEWAY_OATH__SECURE_COOKIES", "false"),
+            ("OGATEWAY_OATH__SCOPES", "openid"),
+            ("OGATEWAY_SESSIONS__KEY", "session-key"),
+            ("OGATEWAY_SERVER__BIND_ADDR", "127.0.0.1:3030"),
+            ("OGATEWAY_SERVER__VERIFY_ROUTE", "/proxy/verify"),
+            ("OGATEWAY_SERVER__ORIGIN__KIND", "x-forwarded"),
+            ("OGATEWAY_SERVER__ORIGIN__DEFAULT_SCHEME", "https"),
+        ]);
+
+        let providers = &cfg.providers;
+        assert!(providers.provider.is_none());
+        assert_eq!(
+            providers.default_provider.as_ref().unwrap().as_str(),
+            "google"
+        );
+
+        let google = &providers.providers[&"google".parse().unwrap()];
+        // Numeric-looking values stay strings.
+        assert_eq!(google.client_id, "123456789");
+        assert_eq!(
+            google.client_secret.as_ref().unwrap().revealed(),
+            "g-secret"
+        );
+        assert_eq!(google.scopes.as_ref().unwrap().to_string(), "openid email");
+        assert!(google.skip_issuer_validation);
+        assert_eq!(google.iss_parameter, IssParameter::Ignored);
+
+        let idp = &providers.providers[&"my_idp".parse().unwrap()];
+        assert_eq!(idp.client_id, "m");
+        assert!(!idp.skip_issuer_validation);
+        assert_eq!(
+            idp.external_origin.as_ref().unwrap().to_string(),
+            "https://gw.example.com/"
+        );
+
+        assert!(!cfg.oath.secure_cookies);
+        assert_eq!(cfg.oath.scopes.to_string(), "openid");
+        assert_eq!(cfg.sessions.key.revealed(), "session-key");
+        assert_eq!(cfg.server.bind_addr.to_string(), "127.0.0.1:3030");
+        assert_eq!(cfg.server.verify_route, "/proxy/verify");
+        assert_eq!(
+            cfg.server.origin().unwrap(),
+            Some(OriginConfig::XForwarded {
+                default_scheme: Some(DefaultScheme::Https)
+            })
+        );
+        assert!(cfg.providers.validate().is_ok());
+    }
+
+    #[test]
+    fn env_overrides_file_values() {
+        let cfg: Config = config::Config::builder()
+            .add_source(config::File::from_str(
+                r#"
+                [provider]
+                client_id = "from-file"
+                client_secret = "file-secret"
+                provider_name = "Bastion"
+                [provider.endpoints]
+                issuer = "https://idp.example.com"
+                "#,
+                config::FileFormat::Toml,
+            ))
+            .add_source(env(&[
+                ("OGATEWAY_PROVIDER__CLIENT_SECRET", "env-secret"),
+                ("OGATEWAY_PROVIDER__SKIP_ISSUER_VALIDATION", "yes"),
+            ]))
+            .build()
+            .unwrap()
+            .try_deserialize()
+            .unwrap();
+
+        let provider = cfg.providers.provider.unwrap();
+        assert_eq!(provider.client_id, "from-file");
+        assert_eq!(provider.client_secret.unwrap().revealed(), "env-secret");
+        assert!(provider.skip_issuer_validation);
+    }
+
+    #[test]
+    fn legacy_top_level_env_var_still_works() {
+        let cfg = from_env_vars(&[
+            ("OGATEWAY_DEFAULT_PROVIDER", "okta"),
+            ("OGATEWAY_PROVIDERS__OKTA__CLIENT_ID", "o"),
+            ("OGATEWAY_PROVIDERS__OKTA__PROVIDER_NAME", "Okta"),
+            (
+                "OGATEWAY_PROVIDERS__OKTA__ENDPOINTS__ISSUER",
+                "https://okta.example.com",
+            ),
+        ]);
+        assert_eq!(cfg.providers.default_provider.unwrap().as_str(), "okta");
+    }
+
     fn full(toml: &str) -> Config {
         config::Config::builder()
             .add_source(config::File::from_str(toml, config::FileFormat::Toml))
@@ -229,6 +381,26 @@ mod tests {
             .unwrap()
             .try_deserialize()
             .unwrap()
+    }
+
+    #[test]
+    fn uppercase_provider_id_is_rejected() {
+        let result = config::Config::builder()
+            .add_source(config::File::from_str(
+                r#"
+                [providers.Google]
+                client_id = "g"
+                provider_name = "Google"
+                [providers.Google.endpoints]
+                issuer = "https://accounts.google.com"
+                "#,
+                config::FileFormat::Toml,
+            ))
+            .build()
+            .unwrap()
+            .try_deserialize::<Config>();
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("Google") && err.contains("lowercase"), "{err}");
     }
 
     #[test]
@@ -250,13 +422,13 @@ mod tests {
     fn multiple_providers() {
         let cfg = full(
             r#"
-            default_provider = "Google"
+            default_provider = "google"
 
-            [providers.Google]
+            [providers.google]
             client_id = "g"
             provider_name = "Google"
             scopes = "openid email"
-            [providers.Google.endpoints]
+            [providers.google.endpoints]
             issuer = "https://accounts.google.com"
 
             [providers.okta]
@@ -275,8 +447,8 @@ mod tests {
             .keys()
             .map(|id| id.as_str().to_owned())
             .collect();
-        assert_eq!(ids, ["Google", "okta"]);
-        assert_eq!(cfg.providers.default_provider.unwrap().as_str(), "Google");
+        assert_eq!(ids, ["google", "okta"]);
+        assert_eq!(cfg.providers.default_provider.unwrap().as_str(), "google");
         assert_eq!(
             cfg.providers.providers.values().next().unwrap().scopes,
             Some("openid email".parse().unwrap())

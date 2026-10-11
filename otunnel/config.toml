@@ -1,3 +1,8 @@
+# Any setting can be overridden by an OTUNNEL_* environment variable,
+# with `__` between nested keys, e.g. OTUNNEL_PROVIDER__CLIENT_SECRET or
+# OTUNNEL_PROVIDERS__GOOGLE__CLIENT_ID (which configures [providers.google];
+# provider ids must be lowercase).
+
 [oath]
 # OAuth2 scopes to request. `openid` is required for the id_token-based
 # identity resolver; ott adds it defensively if you forget. Default:

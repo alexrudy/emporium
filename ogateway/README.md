@@ -36,9 +36,20 @@ ogateway --config config.toml            # listen on server.bind_addr
 ogateway --config config.toml --systemd  # use a systemd-activated socket
 ```
 
-Without `--config`, configuration is read from `OGATEWAY_*` environment
-variables, which can only express top-level keys; anything with a
-provider table needs a config file. With `--systemd`, ogateway serves
+Configuration comes from the `--config` file (if given), overridden by
+`OGATEWAY_*` environment variables. Nested keys are separated by `__`:
+
+```sh
+OGATEWAY_SERVER__BIND_ADDR=127.0.0.1:3030
+OGATEWAY_SERVER__ORIGIN__KIND=x-forwarded
+OGATEWAY_PROVIDERS__GOOGLE__CLIENT_ID=...
+OGATEWAY_PROVIDERS__GOOGLE__CLIENT_SECRET=...
+OGATEWAY_PROVIDERS__GOOGLE__ENDPOINTS__ISSUER=https://accounts.google.com
+OGATEWAY_SESSIONS__KEY=...
+```
+
+See [otool's README](../otool/README.md#environment-variables) for the
+details. With `--systemd`, ogateway serves
 HTTP/1.1 on the first socket passed by systemd socket activation (e.g.
 a Unix socket) instead of binding `server.bind_addr`.
 

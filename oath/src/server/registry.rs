@@ -20,9 +20,15 @@ const MAX_PROVIDER_ID_LEN: usize = 64;
 
 /// Stable identifier for a registered OAuth2 provider, e.g. `google`.
 ///
-/// Provider ids appear in route paths (`{prefix}/{id}/login`) and are
-/// persisted in session data, so they're restricted to ASCII
-/// alphanumerics, `-`, and `_`, and must be 1–64 bytes long.
+/// Provider ids appear in route paths (`{prefix}/{id}/login`), file
+/// paths, and session data, so they're restricted to lowercase ASCII
+/// letters, digits, `-`, and `_`, and must be 1–64 bytes long.
+///
+/// Uppercase is rejected rather than lowercased: config loaders that
+/// lowercase environment variable names (like the `config` crate) would
+/// otherwise turn `Google` in a file and `GOOGLE` in the environment into
+/// two entries that silently collapse into one. Rejecting it also keeps
+/// ids distinct on case-insensitive filesystems.
 ///
 /// [`ProviderId::default`] is `"default"`: the id used by
 /// [`crate::server::OAuth2Router::new`] for its single provider, and the
@@ -47,13 +53,19 @@ impl ProviderId {
                 reason: "longer than 64 bytes",
             });
         }
+        if id.bytes().any(|b| b.is_ascii_uppercase()) {
+            return Err(InvalidProviderId {
+                id,
+                reason: "must be lowercase",
+            });
+        }
         if !id
             .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
         {
             return Err(InvalidProviderId {
                 id,
-                reason: "only ASCII alphanumerics, `-`, and `_` are allowed",
+                reason: "only lowercase ASCII letters, digits, `-`, and `_` are allowed",
             });
         }
         Ok(Self(id))
@@ -330,9 +342,18 @@ mod tests {
 
     #[test]
     fn accepts_simple_ids() {
-        for id in ["google", "my-idp", "okta_prod", "A1"] {
+        for id in ["google", "my-idp", "okta_prod", "a1", "1"] {
             assert_eq!(ProviderId::new(id).unwrap().as_str(), id);
         }
+    }
+
+    #[test]
+    fn rejects_uppercase() {
+        for id in ["Google", "OKTA", "my-IdP", "A1"] {
+            let err = ProviderId::new(id).unwrap_err();
+            assert!(err.to_string().contains("lowercase"), "{id}: {err}");
+        }
+        assert!(serde_json::from_str::<ProviderId>(r#""Google""#).is_err());
     }
 
     #[test]

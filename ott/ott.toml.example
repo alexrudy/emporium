@@ -68,7 +68,8 @@ issuer = "https://accounts.google.com"
 # Named providers. Same fields as the single provider above (including
 # `skip_issuer_validation` and `iss_parameter`), plus an optional
 # `scopes` overriding [oauth] scopes. `provider_name` defaults
-# to the id. Ids may contain ASCII letters, digits, `-`, and `_`.
+# to the id. Ids may contain lowercase ASCII letters, digits, `-`, and
+# `_`.
 #
 # [providers.okta]
 # client_id = "your-okta-client-id"

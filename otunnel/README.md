@@ -27,9 +27,14 @@ otunnel --config config.toml 127.0.0.1:8000
 ```
 
 The positional argument is the upstream authority (`host:port`); requests
-are sent to it over plain HTTP. Without `--config`, configuration is read
-from `OTUNNEL_*` environment variables, which can only express top-level
-keys; anything with a provider table needs a config file.
+are sent to it over plain HTTP.
+
+Configuration comes from the `--config` file (if given), overridden by
+`OTUNNEL_*` environment variables, with `__` separating nested keys,
+e.g. `OTUNNEL_PROVIDERS__GOOGLE__CLIENT_ID` or
+`OTUNNEL_SERVER__BIND_ADDR`. See
+[otool's README](../otool/README.md#environment-variables) for the
+details.
 
 ## Configuration
 
