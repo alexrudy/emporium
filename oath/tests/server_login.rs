@@ -327,6 +327,78 @@ async fn login_callback_logout_round_trip() {
     assert_eq!(setup.mock.count_for("/oauth/token"), 1);
 }
 
+/// Drive login (at `login_uri`) and the callback; return the callback's
+/// redirect target.
+async fn login_then_callback(login_uri: &str) -> String {
+    let setup = setup_router("user-sub", "user@example.com").await;
+    let router = setup.router.clone();
+
+    let login = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(login_uri)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let location: url::Url = login.headers()[header::LOCATION]
+        .to_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+    let state = location
+        .query_pairs()
+        .find(|(k, _)| k == "state")
+        .unwrap()
+        .1
+        .into_owned();
+    let preauth = format!(
+        "oath_preauth={}",
+        extract_cookie_value(login.headers(), "oath_preauth").unwrap()
+    );
+
+    let callback = router
+        .oneshot(
+            Request::builder()
+                .uri(format!("/auth/callback?code=c&state={state}"))
+                .header(header::COOKIE, &preauth)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(callback.status().is_redirection());
+    callback.headers()[header::LOCATION]
+        .to_str()
+        .unwrap()
+        .to_owned()
+}
+
+#[tokio::test]
+async fn callback_redirects_to_return_to() {
+    assert_eq!(
+        login_then_callback("/auth/login?return_to=%2Fprofile%3Ftab%3D1%26x%3D2").await,
+        "/profile?tab=1&x=2"
+    );
+}
+
+#[tokio::test]
+async fn unsafe_return_to_falls_back_to_login_landing() {
+    for return_to in [
+        "%2F%2Fevil.example.com",
+        "%2F%5Cevil.example.com",
+        "%2Fauth%2Flogin",
+    ] {
+        assert_eq!(
+            login_then_callback(&format!("/auth/login?return_to={return_to}")).await,
+            "/",
+            "{return_to}"
+        );
+    }
+}
+
 #[tokio::test]
 async fn callback_without_preauth_cookie_is_400() {
     let setup = setup_router("anything", "anything").await;

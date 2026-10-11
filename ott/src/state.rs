@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use minijinja::Environment;
-use oath::server::{InMemorySessionStore, JsonFileUserStore};
+use oath::server::{InMemorySessionStore, JsonFileUserStore, OAuth2RouterConfig};
 use serde::Serialize;
 use storage::LocalDriver;
 
@@ -34,8 +34,9 @@ pub struct AppState {
     pub users: JsonFileUserStore<LocalDriver, AppUser>,
     /// Registered providers, in registration order.
     pub providers: Arc<[ProviderLink]>,
-    /// Name of the session cookie set by the OAuth2 router.
-    pub session_cookie: Arc<str>,
+    /// The OAuth2 router's configuration: cookie names, route paths,
+    /// and `return_to` validation.
+    pub router_config: Arc<OAuth2RouterConfig>,
 }
 
 impl std::fmt::Debug for AppState {

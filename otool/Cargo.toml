@@ -14,13 +14,13 @@ http.workspace = true
 oath = { path = "../oath", features = ["server"] }
 secret.path = "../secret"
 serde.workspace = true
-serde_urlencoded.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
 oath = { path = "../oath", features = ["server", "tls-ring"] }
 serde_json.workspace = true
+serde_urlencoded.workspace = true
 tokio.workspace = true
 tower = { workspace = true, features = ["util"] }
 

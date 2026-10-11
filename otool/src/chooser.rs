@@ -12,7 +12,7 @@ use axum::Router;
 use axum::extract::Query;
 use axum::response::Html;
 use axum::routing::get;
-use oath::server::{OAuth2Router, SessionStore, UserStore};
+use oath::server::{OAuth2Router, OAuth2RouterConfig, SessionStore, UserStore};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -46,12 +46,14 @@ where
             login_path: provider.login_path(oauth.router_config()),
         })
         .collect();
+    let config = Arc::new(oauth.router_config().clone());
 
     Some(Router::new().route(
         &oauth.router_config().login_path(),
         get(move |Query(params): Query<ChooserParams>| {
             let choices = choices.clone();
-            async move { Html(render(&choices, params.return_to.as_deref())) }
+            let config = config.clone();
+            async move { Html(render(&choices, &config, params.return_to.as_deref())) }
         }),
     ))
 }
@@ -73,20 +75,13 @@ where
     }
 }
 
-fn render(choices: &[Choice], return_to: Option<&str>) -> String {
-    // The provider login handler validates `return_to`; here it only
-    // needs to be carried through, encoded.
-    let query = return_to
-        .and_then(|value| serde_urlencoded::to_string([("return_to", value)]).ok())
-        .map(|q| format!("?{q}"))
-        .unwrap_or_default();
-
+fn render(choices: &[Choice], config: &OAuth2RouterConfig, return_to: Option<&str>) -> String {
     let mut items = String::new();
     for choice in choices {
         let _ = write!(
             items,
             r#"<li><a href="{href}">Sign in with {name}</a></li>"#,
-            href = escape(&format!("{}{query}", choice.login_path)),
+            href = escape(&config.with_return_to(&choice.login_path, return_to)),
             name = escape(&choice.display_name),
         );
     }
@@ -150,14 +145,29 @@ mod tests {
 
     #[test]
     fn lists_each_provider() {
-        let html = render(&choices(), None);
+        let html = render(&choices(), &OAuth2RouterConfig::default(), None);
         assert!(html.contains(r#"<a href="/auth/google/login">Sign in with Google</a>"#));
         assert!(html.contains("Sign in with &lt;Okta &amp; Co&gt;"));
     }
 
     #[test]
     fn carries_return_to_encoded() {
-        let html = render(&choices(), Some(r#"/a?b=1&c="x""#));
-        assert!(html.contains(r#"href="/auth/google/login?return_to=%2Fa%3Fb%3D1%26c%3D%22x%22""#));
+        let html = render(
+            &choices(),
+            &OAuth2RouterConfig::default(),
+            Some("/a?b=1&c=2"),
+        );
+        assert!(html.contains(r#"href="/auth/google/login?return_to=%2Fa%3Fb%3D1%26c%3D2""#));
+    }
+
+    #[test]
+    fn drops_unsafe_return_to() {
+        for return_to in ["//evil.example.com", "/auth/login"] {
+            let html = render(&choices(), &OAuth2RouterConfig::default(), Some(return_to));
+            assert!(
+                html.contains(r#"href="/auth/google/login""#),
+                "{return_to}: {html}"
+            );
+        }
     }
 }

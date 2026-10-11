@@ -113,7 +113,7 @@ async fn main() -> eyre::Result<()> {
         sessions,
         users,
         providers,
-        session_cookie: router_config.cookies.session.as_str().into(),
+        router_config: Arc::new(router_config),
     };
     let bind_addr = state.config.bind_addr;
 

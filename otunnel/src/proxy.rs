@@ -82,18 +82,12 @@ where
                     .map(|response| response.map(Body::new));
             }
 
-            let return_to = parts
-                .uri
-                .path_and_query()
-                .map_or_else(|| "/".to_string(), |p| p.to_string());
-            tracing::trace!(%return_to, "Redirecting to login path");
+            let router_config = &state.inner.oauth_router;
+            let return_to = parts.uri.path_and_query().map(|p| p.as_str());
+            let location = router_config.with_return_to(&router_config.login_path(), return_to);
+            tracing::trace!(?return_to, %location, "Redirecting to login path");
 
-            Ok(Redirect::to(&format!(
-                "{}?return_to={}",
-                state.inner.oauth_router.login_path(),
-                return_to
-            ))
-            .into_response())
+            Ok(Redirect::to(&location).into_response())
         })
     }
 }

@@ -50,7 +50,7 @@ where
 #[derive(Debug, Deserialize)]
 pub(crate) struct LoginParams {
     /// Where to redirect after a successful callback. Only honored if
-    /// it's a same-origin relative path (starts with `/`, no `//`).
+    /// it passes [`OAuth2RouterConfig::sanitize_return_to`].
     #[serde(default)]
     return_to: Option<String>,
 }
@@ -98,7 +98,9 @@ where
 
     let (url, pending) = auth_uri.begin()?;
 
-    let return_to = params.return_to.and_then(|s| sanitize_return_to(&s));
+    let return_to = params
+        .return_to
+        .and_then(|value| state.config.sanitize_return_to(&value));
     let session_id = state
         .sessions
         .create(SessionData::Pending {
@@ -276,14 +278,6 @@ where
     Ok((response_headers, Redirect::to(&state.config.logout_landing)).into_response())
 }
 
-fn sanitize_return_to(value: &str) -> Option<String> {
-    if value.starts_with('/') && !value.starts_with("//") {
-        Some(value.to_owned())
-    } else {
-        None
-    }
-}
-
 fn build_signed_cookie(
     key: &Key,
     name: &str,
@@ -345,14 +339,6 @@ pub fn is_user_denied(code: &TokenErrorCode) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn return_to_must_be_relative() {
-        assert_eq!(sanitize_return_to("/profile").as_deref(), Some("/profile"),);
-        assert!(sanitize_return_to("https://evil.example.com").is_none());
-        assert!(sanitize_return_to("//evil.example.com/path").is_none());
-        assert!(sanitize_return_to("relative-path").is_none());
-    }
 
     #[test]
     fn signed_cookie_roundtrip() {

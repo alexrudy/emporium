@@ -112,6 +112,162 @@ impl OAuth2RouterConfig {
     pub fn provider_callback_path(&self, provider: &ProviderId) -> String {
         format!("{}/{provider}/callback", self.route_prefix)
     }
+
+    /// Validate a post-login `return_to` target, returning it if it's
+    /// safe to redirect to.
+    ///
+    /// Only same-origin absolute paths are accepted, e.g.
+    /// `/profile?tab=1`. Rejected:
+    ///
+    /// - anything not starting with exactly one `/`: absolute URLs,
+    ///   scheme-relative `//host`, relative paths;
+    /// - backslashes, ASCII control characters, and whitespace anywhere:
+    ///   browsers treat `\` as `/` and strip tabs and newlines, which
+    ///   turns `/\host` or `/\t/host` into `//host`;
+    /// - `.` / `..` path segments (including `%2e`), which browsers
+    ///   resolve before following the redirect;
+    /// - paths under [`route_prefix`](Self::route_prefix), which would
+    ///   loop back into the login flow;
+    /// - values over 2048 bytes, or that aren't a valid URI path and
+    ///   query.
+    pub fn sanitize_return_to(&self, value: &str) -> Option<String> {
+        const MAX_LEN: usize = 2048;
+
+        if value.len() > MAX_LEN || !value.starts_with('/') {
+            return None;
+        }
+        if matches!(value.as_bytes().get(1), Some(b'/' | b'\\')) {
+            return None;
+        }
+        if value
+            .bytes()
+            .any(|b| b == b'\\' || b.is_ascii_control() || b.is_ascii_whitespace())
+        {
+            return None;
+        }
+
+        let path = value.split(['?', '#']).next().unwrap_or_default();
+        let dot_segment = path.split('/').any(|segment| {
+            let segment = segment.to_ascii_lowercase().replace("%2e", ".");
+            segment == "." || segment == ".."
+        });
+        if dot_segment {
+            return None;
+        }
+
+        let prefix = self.route_prefix.trim_end_matches('/');
+        if !prefix.is_empty()
+            && (path == prefix
+                || path
+                    .strip_prefix(prefix)
+                    .is_some_and(|rest| rest.starts_with('/')))
+        {
+            return None;
+        }
+
+        value.parse::<http::uri::PathAndQuery>().ok()?;
+        Some(value.to_owned())
+    }
+
+    /// Append `return_to` to `path` as an encoded query parameter, e.g.
+    /// `/auth/login?return_to=%2Fprofile`.
+    ///
+    /// `return_to` is checked with
+    /// [`sanitize_return_to`](Self::sanitize_return_to) first; if it's
+    /// absent or rejected, `path` is returned unchanged.
+    pub fn with_return_to(&self, path: &str, return_to: Option<&str>) -> String {
+        let Some(target) = return_to.and_then(|value| self.sanitize_return_to(value)) else {
+            return path.to_owned();
+        };
+        let query = serde_urlencoded::to_string([("return_to", target)])
+            .expect("a single string pair always URL-encodes");
+        let separator = if path.contains('?') { '&' } else { '?' };
+        format!("{path}{separator}{query}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sanitize(value: &str) -> Option<String> {
+        OAuth2RouterConfig::default().sanitize_return_to(value)
+    }
+
+    #[test]
+    fn accepts_same_origin_paths() {
+        for value in [
+            "/",
+            "/profile",
+            "/a/b?c=1&d=2",
+            "/authors",
+            "/a%2Fb",
+            "/x.y/z",
+        ] {
+            assert_eq!(sanitize(value).as_deref(), Some(value), "{value:?}");
+        }
+    }
+
+    #[test]
+    fn rejects_other_origins_and_relative_paths() {
+        for value in [
+            "",
+            "profile",
+            "https://evil.example.com",
+            "//evil.example.com/path",
+            "/\\evil.example.com",
+            "/\t/evil.example.com",
+            "/\n/evil.example.com",
+            "/a\\b",
+            "/a b",
+        ] {
+            assert!(sanitize(value).is_none(), "{value:?} should be rejected");
+        }
+    }
+
+    #[test]
+    fn rejects_dot_segments() {
+        for value in ["/a/../b", "/./b", "/a/%2e%2e/b", "/a/%2E/b", "/a/..?x=1"] {
+            assert!(sanitize(value).is_none(), "{value:?} should be rejected");
+        }
+    }
+
+    #[test]
+    fn rejects_auth_routes() {
+        for value in ["/auth", "/auth/login", "/auth/google/login?x=1", "/auth/"] {
+            assert!(sanitize(value).is_none(), "{value:?} should be rejected");
+        }
+
+        let config = OAuth2RouterConfig {
+            route_prefix: "/sso/".into(),
+            ..Default::default()
+        };
+        assert!(config.sanitize_return_to("/sso/login").is_none());
+        assert!(config.sanitize_return_to("/auth/login").is_some());
+    }
+
+    #[test]
+    fn rejects_overlong_values() {
+        assert!(sanitize(&format!("/{}", "a".repeat(2048))).is_none());
+    }
+
+    #[test]
+    fn with_return_to_encodes_or_drops() {
+        let config = OAuth2RouterConfig::default();
+        assert_eq!(
+            config.with_return_to("/auth/login", Some("/a?b=1&c=2")),
+            "/auth/login?return_to=%2Fa%3Fb%3D1%26c%3D2"
+        );
+        assert_eq!(
+            config.with_return_to("/?tab=x", Some("/p")),
+            "/?tab=x&return_to=%2Fp"
+        );
+        assert_eq!(
+            config.with_return_to("/auth/login", Some("//evil.example.com")),
+            "/auth/login"
+        );
+        assert_eq!(config.with_return_to("/auth/login", None), "/auth/login");
+    }
 }
 
 mod serde_samesite {
