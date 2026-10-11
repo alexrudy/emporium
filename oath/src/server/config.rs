@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::ScopeSet;
 
+use super::registry::ProviderId;
+
 /// Names of the cookies the router sets and reads.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CookieNames {
@@ -30,7 +32,9 @@ impl Default for CookieNames {
 #[serde(default)]
 pub struct OAuth2RouterConfig {
     /// Route prefix, default `/auth`. The router exposes
-    /// `{prefix}/login`, `{prefix}/callback`, and `{prefix}/logout`.
+    /// `{prefix}/login`, `{prefix}/logout`, and per-provider
+    /// `{prefix}/{provider}/login` and `{prefix}/{provider}/callback`
+    /// routes (see [`crate::server::OAuth2Router`]).
     pub route_prefix: String,
 
     /// Cookie names. Use unique names per integration if you run more
@@ -94,6 +98,19 @@ impl OAuth2RouterConfig {
     /// Returns the logout path, e.g. `/auth/logout`.
     pub fn logout_path(&self) -> String {
         format!("{}/logout", self.route_prefix)
+    }
+
+    /// Returns a registered provider's login path, e.g.
+    /// `/auth/google/login`.
+    pub fn provider_login_path(&self, provider: &ProviderId) -> String {
+        format!("{}/{provider}/login", self.route_prefix)
+    }
+
+    /// Returns a registered provider's callback path, e.g.
+    /// `/auth/google/callback`. Use this to build the provider's
+    /// redirect URI.
+    pub fn provider_callback_path(&self, provider: &ProviderId) -> String {
+        format!("{}/{provider}/callback", self.route_prefix)
     }
 }
 

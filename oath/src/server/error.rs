@@ -73,6 +73,17 @@ pub enum ServerError {
     /// Username failed sanitization.
     #[error("invalid username: {0}")]
     InvalidUsername(&'static str),
+
+    /// The callback arrived on a different provider's callback route
+    /// than the one the pre-auth session was started for. Possible IdP
+    /// mix-up attack, or a stale login in another tab.
+    #[error("callback for provider {actual} does not match pre-auth session for {expected}")]
+    ProviderMismatch {
+        /// Provider recorded in the pre-auth session.
+        expected: super::ProviderId,
+        /// Provider whose callback route was hit.
+        actual: super::ProviderId,
+    },
 }
 
 impl ServerError {
@@ -100,6 +111,7 @@ impl ServerError {
             Self::ProxyCallback(_) => StatusCode::BAD_REQUEST,
             Self::Callback(crate::CallbackError::StateMismatch) => StatusCode::BAD_REQUEST,
             Self::InvalidUsername(_) => StatusCode::BAD_REQUEST,
+            Self::ProviderMismatch { .. } => StatusCode::BAD_REQUEST,
             Self::Callback(_) | Self::Oauth2(_) => StatusCode::BAD_GATEWAY,
             Self::Identity(_) => StatusCode::BAD_GATEWAY,
             Self::SessionStore(_) | Self::UserStore(_) => StatusCode::INTERNAL_SERVER_ERROR,

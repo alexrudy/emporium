@@ -42,7 +42,7 @@ impl FromRequestParts<AppState> for CurrentUser {
             .ok()
             .flatten()
             .ok_or_else(redirect_home)?;
-        let SessionData::Authenticated { username } = data else {
+        let SessionData::Authenticated { username, .. } = data else {
             return Err(redirect_home());
         };
         let user = state

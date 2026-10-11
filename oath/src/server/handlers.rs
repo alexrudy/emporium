@@ -10,21 +10,24 @@ use axum::response::{IntoResponse, Redirect};
 use cookie::{Cookie, CookieJar, Key, SameSite};
 use serde::Deserialize;
 
-use crate::{AuthorizationUrl, TokenEndpoint, TokenErrorCode};
+use crate::{AuthorizationUrl, TokenErrorCode};
 
 use super::config::OAuth2RouterConfig;
 use super::error::ServerError;
 use super::identity::{Identity, IdentityResolver};
 use super::redirect::ExtractRedirect;
+use super::registry::Provider;
 use super::session::{SessionData, SessionId, SessionStore};
 use super::users::UserStore;
 
 /// Shared state threaded through the router via `Extension`.
+///
+/// The provider a login/callback route belongs to is not part of this
+/// state: each of those routes carries its own `Extension<Arc<Provider>>`.
 pub(crate) struct RouterState<S, U>
 where
     U: UserStore,
 {
-    pub endpoint: TokenEndpoint,
     pub config: OAuth2RouterConfig,
     pub sessions: Arc<S>,
     pub users: Arc<U>,
@@ -38,7 +41,6 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RouterState")
-            .field("endpoint", &self.endpoint)
             .field("config", &self.config)
             .field("identity", &self.identity)
             .finish_non_exhaustive()
@@ -65,9 +67,11 @@ pub(crate) struct CallbackParams {
     error_description: Option<String>,
 }
 
-/// `GET {prefix}/login`
+/// `GET {prefix}/{provider}/login` (or `{prefix}/login` for the default
+/// provider).
 pub(crate) async fn login<S, U, C>(
     Extension(state): Extension<Arc<RouterState<S, U>>>,
+    Extension(provider): Extension<Arc<Provider>>,
     Extension(redirect): Extension<Option<Arc<C>>>,
     Query(params): Query<LoginParams>,
     mut parts: http::request::Parts,
@@ -77,7 +81,8 @@ where
     U: UserStore,
     C: ExtractRedirect + Send + Sync + 'static,
 {
-    let mut auth_uri = AuthorizationUrl::new(&state.endpoint).scopes(state.config.scopes.clone());
+    let mut auth_uri =
+        AuthorizationUrl::new(provider.endpoint()).scopes(provider.effective_scopes(&state.config));
 
     if let Some(callback) = &redirect {
         let redirect = callback.from_request_parts(&mut parts).await?;
@@ -89,7 +94,11 @@ where
     let return_to = params.return_to.and_then(|s| sanitize_return_to(&s));
     let session_id = state
         .sessions
-        .create(SessionData::Pending { pending, return_to })
+        .create(SessionData::Pending {
+            provider: provider.id().clone(),
+            pending,
+            return_to,
+        })
         .await
         .map_err(ServerError::session_store)?;
 
@@ -102,16 +111,22 @@ where
         state.config.same_site,
     );
 
-    tracing::debug!("redirecting to oauth provider {url}", url = url.to_string());
+    tracing::debug!(
+        provider = %provider.id(),
+        "redirecting to oauth provider {url}",
+        url = url.to_string()
+    );
     let mut headers = HeaderMap::new();
     headers.append(SET_COOKIE, cookie);
 
     Ok((headers, Redirect::to(&url.to_string())).into_response())
 }
 
-/// `GET {prefix}/callback`
+/// `GET {prefix}/{provider}/callback` (or `{prefix}/callback` for a
+/// provider registered via [`super::OAuth2Router::new`]).
 pub(crate) async fn callback<S, U>(
     Extension(state): Extension<Arc<RouterState<S, U>>>,
+    Extension(provider): Extension<Arc<Provider>>,
     Query(params): Query<CallbackParams>,
     headers: HeaderMap,
 ) -> Result<axum::response::Response, ServerError>
@@ -144,8 +159,12 @@ where
         .map_err(ServerError::session_store)?
         .ok_or(ServerError::PreauthMissing)?;
 
-    let (pending, return_to) = match preauth {
-        SessionData::Pending { pending, return_to } => (pending, return_to),
+    let (pending_provider, pending, return_to) = match preauth {
+        SessionData::Pending {
+            provider,
+            pending,
+            return_to,
+        } => (provider, pending, return_to),
         SessionData::Authenticated { .. } => return Err(ServerError::PreauthMissing),
     };
 
@@ -157,13 +176,24 @@ where
         .await
         .map_err(ServerError::session_store)?;
 
+    // Only exchange the code with the provider the flow was started
+    // against, and only when it arrives on that provider's callback
+    // route. This is the IdP mix-up defense: a code from provider A must
+    // never be sent to provider B's token endpoint.
+    if &pending_provider != provider.id() {
+        return Err(ServerError::ProviderMismatch {
+            expected: pending_provider,
+            actual: provider.id().clone(),
+        });
+    }
+
     let token_set = pending
-        .complete(&state.endpoint, &auth_state, auth_code)
+        .complete(provider.endpoint(), &auth_state, auth_code)
         .await?;
 
     let Identity { username, data } = state
         .identity
-        .resolve(token_set)
+        .resolve(provider.id(), token_set)
         .await
         .map_err(ServerError::identity)?;
 
@@ -178,6 +208,7 @@ where
     let session_id = state
         .sessions
         .create(SessionData::Authenticated {
+            provider: provider.id().clone(),
             username: username.clone(),
         })
         .await

@@ -19,6 +19,8 @@ use thiserror::Error;
 
 use crate::TokenSet;
 
+use super::registry::ProviderId;
+
 /// Identity extracted from a [`TokenSet`] during the callback.
 ///
 /// `username` is the stable per-provider identifier the
@@ -118,7 +120,7 @@ pub fn parse_id_token(tokens: &TokenSet) -> Result<IdClaims, IdentityError> {
 }
 
 type BoxedFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
-type ResolverFn<T> = dyn Fn(TokenSet) -> BoxedFuture<'static, Result<Identity<T>, IdentityError>>
+type ResolverFn<T> = dyn Fn(ProviderId, TokenSet) -> BoxedFuture<'static, Result<Identity<T>, IdentityError>>
     + Send
     + Sync
     + 'static;
@@ -126,7 +128,9 @@ type ResolverFn<T> = dyn Fn(TokenSet) -> BoxedFuture<'static, Result<Identity<T>
 /// Type-erased async closure that turns a [`TokenSet`] into an
 /// [`Identity<T>`].
 ///
-/// Construct via [`IdentityResolver::new`] with an async closure.
+/// Construct via [`IdentityResolver::new`] with an async closure, or
+/// [`IdentityResolver::with_provider`] when the resolver needs to know
+/// which provider issued the tokens.
 pub struct IdentityResolver<T> {
     inner: Arc<ResolverFn<T>>,
 }
@@ -173,13 +177,47 @@ where
         Fut: Future<Output = Result<Identity<T>, IdentityError>> + Send + 'static,
     {
         Self {
-            inner: Arc::new(move |tokens| Box::pin(f(tokens))),
+            inner: Arc::new(move |_provider, tokens| Box::pin(f(tokens))),
         }
     }
 
-    /// Invoke the resolver.
-    pub async fn resolve(&self, tokens: TokenSet) -> Result<Identity<T>, IdentityError> {
-        (self.inner)(tokens).await
+    /// Wrap an async closure that also receives the [`ProviderId`] the
+    /// tokens came from.
+    ///
+    /// OIDC `sub` claims are only unique per issuer, so when more than
+    /// one provider is registered, use this to namespace usernames
+    /// (or otherwise disambiguate them) before they reach the
+    /// [`crate::server::UserStore`].
+    ///
+    /// ```
+    /// # use oath::server::{parse_id_token, Identity, IdentityResolver, ProviderId};
+    /// # use oath::TokenSet;
+    /// let resolver = IdentityResolver::with_provider(|provider: ProviderId, tokens: TokenSet| async move {
+    ///     let claims = parse_id_token(&tokens)?;
+    ///     Ok(Identity {
+    ///         username: format!("{provider}:{}", claims.sub),
+    ///         data: (),
+    ///     })
+    /// });
+    /// # let _ = resolver;
+    /// ```
+    pub fn with_provider<F, Fut>(f: F) -> Self
+    where
+        F: Fn(ProviderId, TokenSet) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<Identity<T>, IdentityError>> + Send + 'static,
+    {
+        Self {
+            inner: Arc::new(move |provider, tokens| Box::pin(f(provider, tokens))),
+        }
+    }
+
+    /// Invoke the resolver for tokens issued by `provider`.
+    pub async fn resolve(
+        &self,
+        provider: &ProviderId,
+        tokens: TokenSet,
+    ) -> Result<Identity<T>, IdentityError> {
+        (self.inner)(provider.clone(), tokens).await
     }
 }
 

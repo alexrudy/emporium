@@ -48,7 +48,7 @@ impl FromRequestParts<AppState> for CurrentUser {
             .flatten()
             .ok_or(StatusCode::UNAUTHORIZED)
             .inspect_err(|_| tracing::trace!(session=%session_id.as_str(), "Unknown session"))?;
-        let SessionData::Authenticated { username } = data else {
+        let SessionData::Authenticated { username, .. } = data else {
             tracing::trace!("Session data is not authenticated");
             return Err(StatusCode::UNAUTHORIZED);
         };

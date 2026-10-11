@@ -19,17 +19,27 @@ use serde::{Deserialize, Serialize};
 
 use crate::grant::PendingAuthorization;
 
+use super::registry::ProviderId;
+
 /// What kind of session this is.
 ///
 /// Both variants share the same `SessionId` namespace and live in the
 /// same [`SessionStore`]. Cookies determine which one is loaded:
 ///   - the `preauth` cookie points to a [`SessionData::Pending`]
 ///   - the `session` cookie points to a [`SessionData::Authenticated`]
+///
+/// Both variants record the [`ProviderId`] the flow ran against. When
+/// deserializing data persisted before providers were tracked, the
+/// provider defaults to [`ProviderId::default`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SessionData {
     /// In-flight authorization-code request awaiting the callback.
     Pending {
+        /// Provider the authorization request was sent to. The callback
+        /// is only accepted on this provider's callback route.
+        #[serde(default)]
+        provider: ProviderId,
         /// State + PKCE verifier persisted across the redirect.
         pending: PendingAuthorization,
         /// Optional URL to redirect the user back to after login.
@@ -38,9 +48,21 @@ pub enum SessionData {
     },
     /// Authenticated session pointing to a stored user.
     Authenticated {
+        /// Provider that authenticated the user.
+        #[serde(default)]
+        provider: ProviderId,
         /// The persistent user identifier (typically the OIDC `sub`).
         username: String,
     },
+}
+
+impl SessionData {
+    /// The provider this session belongs to.
+    pub fn provider(&self) -> &ProviderId {
+        match self {
+            Self::Pending { provider, .. } | Self::Authenticated { provider, .. } => provider,
+        }
+    }
 }
 
 /// Opaque random identifier for a session.
@@ -182,13 +204,21 @@ mod tests {
     #[tokio::test]
     async fn in_memory_round_trip() {
         let store = InMemorySessionStore::default();
+        let provider = ProviderId::new("google").unwrap();
         let data = SessionData::Authenticated {
+            provider: provider.clone(),
             username: "alice".into(),
         };
         let id = store.create(data.clone()).await.unwrap();
         let loaded = store.get(&id).await.unwrap().unwrap();
         match loaded {
-            SessionData::Authenticated { username } => assert_eq!(username, "alice"),
+            SessionData::Authenticated {
+                provider: loaded_provider,
+                username,
+            } => {
+                assert_eq!(username, "alice");
+                assert_eq!(loaded_provider, provider);
+            }
             _ => panic!("expected authenticated session"),
         }
         store.delete(&id).await.unwrap();
@@ -200,6 +230,7 @@ mod tests {
         let store = InMemorySessionStore::new(StdDuration::from_millis(0));
         let id = store
             .create(SessionData::Authenticated {
+                provider: ProviderId::default(),
                 username: "alice".into(),
             })
             .await
@@ -207,5 +238,23 @@ mod tests {
         // Any subsequent get sees a stale entry and returns None.
         tokio::time::sleep(StdDuration::from_millis(5)).await;
         assert!(store.get(&id).await.unwrap().is_none());
+    }
+
+    #[test]
+    fn session_data_without_provider_uses_default() {
+        let data: SessionData =
+            serde_json::from_str(r#"{"kind":"authenticated","username":"alice"}"#).unwrap();
+        assert_eq!(data.provider(), &ProviderId::default());
+    }
+
+    #[test]
+    fn session_data_round_trips_provider() {
+        let data = SessionData::Authenticated {
+            provider: ProviderId::new("okta").unwrap(),
+            username: "alice".into(),
+        };
+        let json = serde_json::to_string(&data).unwrap();
+        let back: SessionData = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.provider().as_str(), "okta");
     }
 }
