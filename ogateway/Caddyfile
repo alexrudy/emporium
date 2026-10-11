@@ -27,9 +27,12 @@ localhost:8080 {
 (gateway) {
 	route {
 		reverse_proxy /auth/* unix//run/gateway/gateway.sock {
-			# Public origin of this host; ogateway appends each provider's
-			# callback path. (A full callback URL also works: only the scheme
-			# and host are used.)
+			# Public origin of this host, for `[server.origin] kind = "trusted-header"`;
+			# ogateway appends each provider's callback path. (A full callback
+			# URL also works: only the scheme and host are used.)
+			#
+			# Not needed with `kind = "x-forwarded"`: reverse_proxy already
+			# sets X-Forwarded-Proto and X-Forwarded-Host, and preserves Host.
 			header_up X-Gateway-Callback {scheme}://{host}
 			transport http {
 				versions 1.1

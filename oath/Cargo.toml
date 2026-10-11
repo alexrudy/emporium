@@ -28,6 +28,7 @@ axum = { workspace = true, optional = true }
 camino = { workspace = true, optional = true }
 cookie = { workspace = true, optional = true, features = ["signed", "private"] }
 dashmap = { workspace = true, optional = true }
+hyproxy = { workspace = true, optional = true }
 storage = { path = "../storage", optional = true }
 storage-driver = { path = "../storage-driver", optional = true }
 
@@ -40,6 +41,7 @@ server = [
     "dep:camino",
     "dep:cookie",
     "dep:dashmap",
+    "dep:hyproxy",
 ]
 json-file-user-store = [
     "dep:storage",

@@ -33,5 +33,22 @@ token_uri = "http://localhost:3000/api/oauth/token"
 bind_addr = "127.0.0.1:3030"
 verify_route = "/proxy/verify"
 
+# Optional: derive redirect URIs from the origin each request arrived on,
+# so one gateway can authenticate several hostnames. Each provider's
+# redirect URI becomes `<origin><callback path>`, and must be registered
+# with the provider for every host. Only trust these headers when the
+# gateway is reachable exclusively through the proxy.
+#
+# [server.origin]
+# kind = "x-forwarded"      # X-Forwarded-Proto/-Host/-Port (Caddy's default)
+# kind = "forwarded"        # RFC 7239 Forwarded header
+# default_scheme = "https"  # used when no proto is forwarded
+#
+# [server.origin]
+# kind = "trusted-header"
+# header = "X-Gateway-Callback"
+#
+# `trusted_header = "X-Gateway-Callback"` is shorthand for the latter.
+
 [sessions]
 key = "czQckxOIiK4pUqc2z1XsaG+YLSWg+cv7p3PueCMkx3ByjchuoGbh5G+E/NS0IlNeSKUAnNljfaHsJ9fcvpCFhQ=="

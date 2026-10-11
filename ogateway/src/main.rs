@@ -6,7 +6,6 @@ use std::{
         unix::net::UnixListener,
     },
     path::PathBuf,
-    str::FromStr,
     sync::Arc,
 };
 
@@ -18,7 +17,7 @@ use hyperdriver::{
     Server,
     server::{ServerProtocolExt, conn::Acceptor},
 };
-use oath::server::TrustedHeader;
+
 use otool::{auth::OptionalCurrentUser, build_router, state::AppState};
 use systemd_connector::sockets;
 use tower::ServiceExt;
@@ -28,8 +27,10 @@ use tower_http::{
 };
 
 use self::config::Config;
+use self::origin::OriginExtractor;
 
 mod config;
+mod origin;
 
 #[derive(Debug, Parser)]
 struct Cli {
@@ -73,11 +74,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tracing::info!("Proxy verification at {}", config.server.verify_route);
     let mut oauth_router = build_router(&state).await?;
-    if let Some(trusted_header) = &config.server.trusted_header {
-        let extract = TrustedHeader::from(
-            http::HeaderName::from_str(trusted_header).context("Invalid trusted header")?,
-        );
-        oauth_router = oauth_router.redirect(Arc::new(extract));
+    if let Some(origin) = config.server.origin()? {
+        tracing::info!(?origin, "deriving redirect URIs from the request origin");
+        oauth_router = oauth_router.redirect(Arc::new(OriginExtractor::try_from(&origin)?));
     }
     let router = oauth_router
         .into_router()

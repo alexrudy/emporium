@@ -1821,6 +1821,7 @@ dependencies = [
  "http",
  "http-body-util",
  "hyperdriver",
+ "hyproxy",
  "rand 0.10.3",
  "secret",
  "serde",
