@@ -1,8 +1,10 @@
 [package]
 name = "ogateway"
-version = "0.1.0"
-edition = "2024"
-license = "MIT"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "An OAuth2 / OIDC authentication gateway for reverse proxies using auth sub-requests"
 
 [dependencies]
 axum.workspace = true
@@ -11,8 +13,8 @@ config.workspace = true
 eyre.workspace = true
 http.workspace = true
 hyperdriver.workspace = true
-oath = { path = "../oath", features = ["server"] }
-otool.path = "../otool"
+oath = { workspace = true, features = ["server"] }
+otool.workspace = true
 serde.workspace = true
 systemd-connector.workspace = true
 tokio.workspace = true

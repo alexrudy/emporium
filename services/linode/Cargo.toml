@@ -1,12 +1,14 @@
 [package]
 name = "linode"
-version = "0.9.0"
-edition = "2021"
-license = "MIT"
-publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "A client for the Linode API"
+publish.workspace = true
 
 [dependencies]
-api-client = { path = "../../api-client" }
+api-client.workspace = true
 futures.workspace = true
 http.workspace = true
 hyperdriver.workspace = true

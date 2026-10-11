@@ -1,4 +1,4 @@
-//! Bookcase is a library for managing collections in cloud storage, which are indexed by date.
+//! Bookshelf is a library for managing collections in cloud storage, which are indexed by date.
 
 use std::{
     collections::{BTreeMap, BTreeSet},

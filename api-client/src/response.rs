@@ -7,10 +7,10 @@ mod futures {
     use std::fmt;
     use std::future::Future;
     use std::pin::Pin;
-    use std::task::{ready, Context, Poll};
+    use std::task::{Context, Poll, ready};
 
-    use http_body_util::combinators::Collect;
     use http_body_util::BodyExt as _;
+    use http_body_util::combinators::Collect;
     use pin_project::pin_project;
     use tower::BoxError;
 

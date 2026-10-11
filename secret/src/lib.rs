@@ -2,7 +2,7 @@
 
 use std::{borrow::Cow, env::VarError, fmt, ops::Deref};
 
-use http::{header::InvalidHeaderValue, HeaderValue};
+use http::{HeaderValue, header::InvalidHeaderValue};
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 

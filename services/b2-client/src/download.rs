@@ -3,7 +3,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 use http_body_util::BodyExt as _;
 use hyperdriver::Body;
 
-use crate::{errors::B2ResponseExt, B2Client, B2RequestError};
+use crate::{B2Client, B2RequestError, errors::B2ResponseExt};
 const B2_FILE_URL_BASE: &str = "file";
 
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
@@ -14,8 +14,10 @@ impl B2Client {
         &self,
         bucket: &str,
         filename: &Utf8Path,
-    ) -> Result<impl futures::stream::Stream<Item = Result<bytes::Bytes, BoxError>>, B2RequestError>
-    {
+    ) -> Result<
+        impl futures::stream::Stream<Item = Result<bytes::Bytes, BoxError>> + use<>,
+        B2RequestError,
+    > {
         let url = self.b2_download_file_by_name_url(bucket, filename);
         tracing::trace!("GET {}", url);
 

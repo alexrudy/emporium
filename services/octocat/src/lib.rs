@@ -462,10 +462,10 @@ impl GithubApp {
 
         {
             let guard = self.token.read().unwrap();
-            if let Some(cache) = &*guard {
-                if !cache.is_expired() {
-                    return Ok(cache.secret.clone());
-                }
+            if let Some(cache) = &*guard
+                && !cache.is_expired()
+            {
+                return Ok(cache.secret.clone());
             }
         }
 

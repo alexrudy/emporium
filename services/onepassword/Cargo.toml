@@ -1,14 +1,16 @@
 [package]
 name = "onepassword"
-version = "0.1.0"
-edition = "2024"
-license = "MIT"
-publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Access 1Password secrets via the 1Password Connect API"
+publish.workspace = true
 
 [dependencies]
 http.workspace = true
 hyperdriver.workspace = true
-api-client = { path = "../../api-client" }
+api-client.workspace = true
 serde.workspace = true
 camino = { workspace = true, features = ["serde1"] }
 percent-encoding.workspace = true

@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use http::Uri;
-use http::{header::HeaderValue, HeaderName};
+use http::{HeaderName, header::HeaderValue};
 use hyperdriver::Body;
 use serde::Serialize;
 use tower::ServiceExt as _;
@@ -12,7 +12,7 @@ use crate::basic_auth;
 use crate::error::Error;
 
 use crate::uri::UriExtension;
-use crate::{response::Response, ApiClient};
+use crate::{ApiClient, response::Response};
 
 // type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
 type Result<T, E = Error> = std::result::Result<T, E>;

@@ -11,11 +11,11 @@ use arc_swap::ArcSwap;
 use arc_swap::Guard;
 use http::Method;
 use http::Uri;
-use hyperdriver::service::SharedService;
 use hyperdriver::Body;
+use hyperdriver::service::SharedService;
 pub use secret::Secret;
-use tower::util::BoxCloneService;
 use tower::ServiceExt;
+use tower::util::BoxCloneService;
 
 mod adapt;
 mod authentication;
@@ -29,7 +29,7 @@ pub mod uri;
 
 pub use self::adapt::AdaptClientIncomingLayer;
 pub use self::authentication::{
-    basic_auth, Authentication, AuthenticationLayer, AuthenticationService, BasicAuth, BearerAuth,
+    Authentication, AuthenticationLayer, AuthenticationService, BasicAuth, BearerAuth, basic_auth,
 };
 pub use self::error::Error;
 pub use self::paginate::{Paginated, PaginatedData, PaginationInfo, Paginator};
@@ -132,7 +132,7 @@ where
     }
 
     /// Get a reference to the current base URI
-    pub fn get_base(&self) -> impl Deref<Target = Arc<Uri>> {
+    pub fn get_base(&self) -> impl Deref<Target = Arc<Uri>> + use<A> {
         self.inner.base.load()
     }
 

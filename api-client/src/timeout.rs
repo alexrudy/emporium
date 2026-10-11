@@ -1,7 +1,7 @@
 //! Atomic-sync'd timeouts so that a client can share its timeout across threads.
 
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::time::Duration;
 
 #[derive(Debug)]
@@ -154,7 +154,7 @@ mod future {
     use std::future::{Future, IntoFuture};
     use std::marker::PhantomData;
     use std::pin::Pin;
-    use std::task::{ready, Context, Poll};
+    use std::task::{Context, Poll, ready};
     use std::time::Duration;
 
     use pin_project::pin_project;

@@ -1,12 +1,14 @@
 [package]
 name = "tailscale"
-version = "0.9.0"
-edition = "2021"
-license = "MIT"
-publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "A minimal Tailscale API client and host tailnet address lookup"
+publish.workspace = true
 
 [dependencies]
-api-client.path = "../../api-client"
+api-client.workspace = true
 camino.workspace = true
 http.workspace = true
 hyperdriver.workspace = true

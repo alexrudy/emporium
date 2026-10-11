@@ -1,9 +1,11 @@
 [package]
 name = "registry"
-version = "0.1.0"
-edition = "2024"
-license = "MIT"
-publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "An OCI Distribution Specification container registry with pluggable storage"
+publish.workspace = true
 
 [[bin]]
 name = "registry-server"
@@ -14,15 +16,15 @@ required-features = ["cli", "tls-aws-lc"]
 axum.workspace = true
 bytes.workspace = true
 camino.workspace = true
-clap = { version = "4.6.1", features = ["derive"], optional = true }
+clap = { workspace = true, optional = true }
 hex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
-storage = { path = "../../storage" }
+storage.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["io-util"] }
-toml_edit = { version = "0.25.11", features = ["serde"], optional = true }
+toml_edit = { workspace = true, optional = true }
 tower.workspace = true
 tracing.workspace = true
 tracing-subscriber = { workspace = true, optional = true }

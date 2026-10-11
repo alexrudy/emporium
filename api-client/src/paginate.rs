@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::fmt;
 
-use futures::{future::BoxFuture, FutureExt};
+use futures::{FutureExt, future::BoxFuture};
 use serde::Deserialize;
 use thiserror::Error;
 
@@ -196,7 +196,7 @@ where
                 cx.waker().wake_by_ref();
                 std::task::Poll::Pending
             }
-            PaginatedStreamState::Buffered(ref mut items) => {
+            PaginatedStreamState::Buffered(items) => {
                 if let Some(item) = items.pop_front() {
                     std::task::Poll::Ready(Some(Ok(item)))
                 } else {
@@ -206,7 +206,7 @@ where
                     std::task::Poll::Pending
                 }
             }
-            PaginatedStreamState::Requesting(ref mut future) => match future.poll_unpin(cx) {
+            PaginatedStreamState::Requesting(future) => match future.poll_unpin(cx) {
                 std::task::Poll::Ready(Ok(Some(mut paginator))) => {
                     tracing::trace!(
                         "Paginated request on page {} of {}",

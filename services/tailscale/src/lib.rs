@@ -1,4 +1,8 @@
-//! Minimal Tailscale Client with DNS updates for Linode
+//! Minimal Tailscale API client.
+//!
+//! Also provides helpers to look up the current host's Tailscale addresses
+//! (via the `tailscale` CLI) and the global-scope address of its `eth0`
+//! interface (via `ip`).
 use std::net::IpAddr;
 use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;

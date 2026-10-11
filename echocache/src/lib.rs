@@ -254,7 +254,7 @@ where
                 InnerCache::Cached { value, expires }
                     if expires.map(|e| e >= Instant::now()).unwrap_or(true) =>
                 {
-                    return value.clone()
+                    return value.clone();
                 }
                 InnerCache::Inflight(request) => request.handle(f),
                 _ => {

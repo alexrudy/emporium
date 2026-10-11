@@ -2,13 +2,13 @@ use std::{fmt, sync::Arc};
 
 use api_client::response::{Response, ResponseBodyExt as _, ResponseExt as _};
 use http::StatusCode;
-use serde::{de::DeserializeOwned, Deserialize};
+use serde::{Deserialize, de::DeserializeOwned};
 use storage_driver::{StorageError, StorageErrorKind};
 use thiserror::Error;
 
 use crate::{
-    application::{AuthenticationError, AuthenticationErrorKind},
     B2_STORAGE_NAME,
+    application::{AuthenticationError, AuthenticationErrorKind},
 };
 
 /// An error deserialized from a response from the B2 API.

@@ -7,23 +7,23 @@ use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
 use std::time::Duration;
 
-use api_client::response::ResponseBodyExt as _;
-use api_client::response::ResponseExt as _;
-use api_client::uri::UriExtension as _;
 use api_client::ApiClient;
 use api_client::BearerAuth;
 use api_client::PaginatedData;
 use api_client::RequestBuilder;
 use api_client::Secret;
-use futures::stream::StreamExt;
+use api_client::response::ResponseBodyExt as _;
+use api_client::response::ResponseExt as _;
+use api_client::uri::UriExtension as _;
 use futures::Stream;
 use futures::TryStreamExt;
+use futures::stream::StreamExt;
 use hyperdriver::Body;
 use thiserror::Error;
 
-use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 
 /// Results from the Linode API can be errors or data.
 pub type Result<T, E = LinodeError> = std::result::Result<T, E>;
@@ -153,7 +153,7 @@ impl LinodeClient {
 
     /// List all Linode instances.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn list_lindoe_instances(&self) -> impl Stream<Item = Result<Instance>> {
+    pub async fn list_lindoe_instances(&self) -> impl Stream<Item = Result<Instance>> + use<> {
         self.get_paginated("linode/instances")
             .map_ok(Instance::new)
             .map_err(|error| LinodeError::Request(api_client::Error::ResponseBody(error)))
@@ -190,7 +190,7 @@ impl LinodeClient {
     pub fn list_linode_domain_records(
         &self,
         domain: &Domain,
-    ) -> impl futures::Stream<Item = Result<Record>> {
+    ) -> impl futures::Stream<Item = Result<Record>> + use<> {
         let endpoint = format!("domains/{}/records", domain.id());
         let id = domain.id();
 

@@ -1,8 +1,10 @@
 [package]
 name = "otool"
-version = "0.1.0"
-edition = "2024"
-license = "MIT"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Shared configuration, state, and session plumbing for axum apps that sign users in with oath"
 
 [dependencies]
 async-trait.workspace = true
@@ -13,17 +15,17 @@ dashmap.workspace = true
 data-encoding.workspace = true
 futures.workspace = true
 http.workspace = true
-oath = { path = "../oath", features = ["server"] }
-olite = { path = "../olite", optional = true }
-ovalkey = { path = "../ovalkey", optional = true }
-secret.path = "../secret"
+oath = { workspace = true, features = ["server"] }
+olite = { workspace = true, optional = true }
+ovalkey = { workspace = true, optional = true }
+secret.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["time"] }
 tracing.workspace = true
 
 [dev-dependencies]
-oath = { path = "../oath", features = ["server", "tls-ring"] }
+oath = { workspace = true, features = ["server", "tls-ring"] }
 serde_json.workspace = true
 serde_urlencoded.workspace = true
 

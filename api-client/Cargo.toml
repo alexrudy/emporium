@@ -1,8 +1,10 @@
 [package]
 name = "api-client"
-version = "0.9.0"
-edition = "2021"
-license = "MIT"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Building blocks for typed HTTP API clients: authentication, retries, timeouts, and pagination"
 
 [dependencies]
 arc-swap.workspace = true
@@ -16,7 +18,7 @@ http.workspace = true
 hyper.workspace = true
 hyperdriver.workspace = true
 pin-project.workspace = true
-secret.path = "../secret"
+secret.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_urlencoded.workspace = true

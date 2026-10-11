@@ -1,8 +1,10 @@
 [package]
 name = "otunnel"
-version = "0.1.0"
-edition = "2024"
-license = "MIT"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "A reverse proxy that requires an OAuth2 / OIDC sign-in before forwarding requests upstream"
 
 [dependencies]
 axum.workspace = true
@@ -15,8 +17,8 @@ http.workspace = true
 hyper.workspace = true
 hyproxy = { workspace = true, features = ["upgrade"] }
 hyperdriver = { workspace = true}
-oath = { path = "../oath", features = ["server"] }
-otool.path = "../otool"
+oath = { workspace = true, features = ["server"] }
+otool.workspace = true
 serde.workspace = true
 tokio.workspace = true
 tower-http = { workspace = true, features = ["trace", "catch-panic", "sensitive-headers", "request-id", "propagate-header"] }

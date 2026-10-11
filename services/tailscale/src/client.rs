@@ -1,6 +1,6 @@
 use std::{borrow::Cow, net::IpAddr};
 
-use api_client::{response::ResponseBodyExt as _, ApiClient, Authentication, Secret};
+use api_client::{ApiClient, Authentication, Secret, response::ResponseBodyExt as _};
 use camino::Utf8PathBuf;
 use serde::Deserialize;
 use thiserror::Error;

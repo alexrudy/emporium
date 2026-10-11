@@ -114,7 +114,7 @@ impl B2Client {
     }
 
     /// Access the inner API Client
-    pub fn api_client(&self) -> &ApiClient<impl Authentication> {
+    pub fn api_client(&self) -> &ApiClient<impl Authentication + use<>> {
         &self.client
     }
 }
