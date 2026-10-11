@@ -55,7 +55,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Config::from_env()?
     };
 
-    eprintln!("{}", serde_json::to_string_pretty(&config)?);
+    // `Debug`, not serde: `Secret`'s serializer emits the raw value, while
+    // its `Debug` impl redacts it.
+    tracing::debug!(?config, "loaded configuration");
 
     let state = AppState::new(config.clone(), args.upstream.parse()?);
 

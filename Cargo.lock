@@ -1995,7 +1995,6 @@ dependencies = [
  "oath",
  "otool",
  "serde",
- "serde_json",
  "tokio",
  "tower",
  "tower-http",

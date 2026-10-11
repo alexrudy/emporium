@@ -24,6 +24,69 @@
 //! [`OAuth2Router::multi_provider`] + [`OAuth2Router::provider`], chain
 //! config methods, then call [`OAuth2Router::into_router`] to get an
 //! `axum::Router` you can merge into your own app.
+//!
+//! # Providers
+//!
+//! Each [`Provider`] pairs a [`TokenEndpoint`] with a [`ProviderId`] used
+//! in its route paths, and can override scopes and its display name. The
+//! provider registered via [`OAuth2Router::new`] (or [`Provider::root`])
+//! has id [`ProviderId::default`].
+//!
+//! `{prefix}/login` is served by the *default provider*: the one set
+//! with [`OAuth2Router::default_provider`], else the root provider, else
+//! the only registered provider. With none of those, the route is left
+//! unrouted so the app can mount a provider chooser there
+//! ([`OAuth2Router::default_login_provider`] tells you which case you're
+//! in).
+//!
+//! # Redirect URIs
+//!
+//! By default each provider's `redirect_uri` is whatever its
+//! [`TokenEndpoint`] was built with; it must point at that provider's
+//! callback path ([`OAuth2RouterConfig::callback_path`] for the root
+//! provider, [`OAuth2RouterConfig::provider_callback_path`] for others).
+//!
+//! To serve several hostnames, give the router an [`ExtractRedirect`]
+//! with [`OAuth2Router::redirect`]: it derives the public origin from
+//! each request ([`TrustedHeader`], [`ForwardedHeader`],
+//! [`XForwardedHeaders`], or a fixed [`Uri`]), and the router appends
+//! the provider's callback path. The value sent to the provider is
+//! recorded with the pending login and repeated at the code exchange,
+//! as RFC 6749 §4.1.3 requires.
+//!
+//! # What the callback checks
+//!
+//! In order, before a session is created:
+//!
+//! 1. **RFC 9207 `iss` parameter**, per the provider's
+//!    [`IssParameter`] policy (checked even on error responses).
+//! 2. **Pre-auth session**: the signed pre-auth cookie must name a
+//!    pending login. It's single-use, deleted before anything else can
+//!    fail.
+//! 3. **Provider**: the callback must arrive on the route of the provider
+//!    the login was started with (IdP mix-up defense).
+//! 4. **State**, then the PKCE code exchange.
+//! 5. **ID token** ([`validate_id_token`]): if one was returned, `aud` must
+//!    include the client id, `azp` (if present) must equal it, and `iss`
+//!    must equal the provider's issuer when known (opt out with
+//!    [`Provider::skip_issuer_validation`]). The signature, `exp`, and
+//!    `nonce` are **not** checked: the token is trusted because it came
+//!    straight from the token endpoint over TLS.
+//! 6. **Identity**: the [`IdentityResolver`] maps the tokens to a
+//!    username (typically the `sub`), which must pass
+//!    [`sanitize_username`].
+//!
+//! Users and sessions are keyed by `(provider, username)`, so the same
+//! `sub` at two providers is two users.
+//!
+//! # `return_to`
+//!
+//! `{prefix}/login?return_to=/some/page` sends the user back to
+//! `/some/page` after the callback. Only same-origin paths outside the
+//! auth routes are honored (see
+//! [`OAuth2RouterConfig::sanitize_return_to`]); anything else falls back
+//! to [`OAuth2RouterConfig::login_landing`]. Use
+//! [`OAuth2RouterConfig::with_return_to`] to build such links.
 
 mod config;
 mod error;

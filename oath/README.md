@@ -3,18 +3,22 @@
 An OAuth2 client built on top of the workspace `api-client` crate.
 
 `oath` focuses on consuming OAuth2-protected APIs. It is not an
-authorization server, an OIDC provider, or a session library — it
-provides the protocol primitives and a refresh-aware HTTP wrapper that
-fit between the user-agent redirect and the bearer header on the
-outgoing API request.
+authorization server or an OIDC provider. The core crate provides the
+protocol primitives and a refresh-aware HTTP wrapper that fit between
+the user-agent redirect and the bearer header on the outgoing API
+request; the optional `server` feature adds an `axum` router that runs
+the browser login flow against one or more providers.
 
 ## Layout
 
 | Layer       | Type                                  | What it does                                                   |
 |-------------|---------------------------------------|----------------------------------------------------------------|
 | Protocol    | [`TokenEndpoint`]                     | POST grants to `/token`, parse the response                    |
+| Discovery   | `ProviderMetadata`                    | Fetch `.well-known/openid-configuration`, configure an endpoint |
 | URL builder | [`AuthorizationUrl`] / [`PendingAuthorization`] | Build the auth redirect, persist + verify on callback |
 | HTTP        | [`OAuth2Client`]                      | API client that refreshes the bearer proactively               |
+| Config      | `provider::OAuthProviderConfig`       | Serde-friendly provider description for app config files       |
+| Login flow  | `server::OAuth2Router` (`server`)     | `axum` routes for login / callback / logout, multi-provider    |
 
 ## Supported grants
 
@@ -39,6 +43,12 @@ Enable a TLS backend that matches the rest of your workspace:
 tls-ring   = ["oath/tls-ring"]    # rustls + ring
 tls-aws-lc = ["oath/tls-aws-lc"]  # rustls + aws-lc-rs
 ```
+
+| Feature                | Adds                                                                 |
+|------------------------|----------------------------------------------------------------------|
+| `tls-ring` / `tls-aws-lc` | TLS backend for the default HTTP transport                        |
+| `server`               | `oath::server`: the `axum` login-flow router, sessions, user stores |
+| `json-file-user-store` | `server::JsonFileUserStore`, backed by a `storage` driver (use with `server`) |
 
 ## Examples
 
@@ -95,6 +105,27 @@ let token_set = pending
 network call. State mismatches return `CallbackError::StateMismatch`
 without contacting the token endpoint.
 
+### OIDC discovery
+
+```rust
+use oath::{ProviderMetadata, TokenEndpoint};
+
+let issuer: http::Uri = "https://accounts.google.com".parse()?;
+let metadata = ProviderMetadata::discover(&issuer).await?;
+
+let endpoint = TokenEndpoint::builder()
+    .from_metadata(&metadata)?          // endpoints, issuer, RFC 9207 support
+    .client_id("my-app")
+    .redirect_uri("https://app.example.com/auth/callback".parse()?)
+    .build()?;
+```
+
+`from_metadata` records the issuer exactly as published (for `iss`
+checks) and whether the provider advertises
+`authorization_response_iss_parameter_supported`.
+`provider::OAuthProviderConfig::provider(callback_path)` does all of this
+from a config-file description of the provider.
+
 ### Refresh-aware API client
 
 For long-lived consumers, wrap the endpoint and an initial `TokenSet` in
@@ -145,6 +176,110 @@ println!("Visit {} and enter {}", auth.verification_uri, auth.user_code);
 let response = endpoint.poll_device_token(&auth).await?;
 ```
 
+## Browser login flow (`server` feature)
+
+`oath::server::OAuth2Router` assembles the protocol pieces into `axum`
+routes, with signed cookies, a pluggable `SessionStore` and `UserStore`,
+and an `IdentityResolver` that turns tokens into your user type.
+
+```rust
+use std::sync::Arc;
+
+use oath::server::{
+    IdentityResolver, Identity, InMemorySessionStore, OAuth2Router, OAuth2RouterConfig,
+    Provider, ProviderId, XForwardedHeaders, parse_id_token,
+};
+
+let google: ProviderId = "google".parse()?;
+let okta: ProviderId = "okta".parse()?;
+
+// Each endpoint's redirect URI must point at its provider's callback,
+// e.g. config.provider_callback_path(&google) == "/auth/google/callback".
+let config = OAuth2RouterConfig::default();
+
+let identity = IdentityResolver::new(|tokens| async move {
+    let claims = parse_id_token(&tokens)?;
+    Ok(Identity { username: claims.sub, data: MyUser { email: claims.email } })
+});
+
+let router: axum::Router = OAuth2Router::multi_provider(
+    InMemorySessionStore::default(),
+    my_user_store,                       // impl UserStore<Data = MyUser>
+    identity,
+    cookie::Key::generate(),
+)
+.config(config)
+.provider(Provider::new(google.clone(), google_endpoint).with_display_name("Google"))
+.provider(Provider::new(okta, okta_endpoint).with_scopes("openid groups".parse()?))
+.default_provider(google)                // serves /auth/login
+.redirect(Arc::new(XForwardedHeaders::new())) // optional: per-host redirect URIs
+.into_router();
+```
+
+### Routes
+
+| Route                              | Purpose                                                        |
+|------------------------------------|----------------------------------------------------------------|
+| `GET  {prefix}/{id}/login`         | Start a login with provider `id` (`?return_to=/path` optional) |
+| `GET  {prefix}/{id}/callback`      | That provider's redirect URI                                   |
+| `GET  {prefix}/login`              | Login with the default provider, if any (else unrouted)        |
+| `POST {prefix}/logout`             | End the session                                                |
+
+`{prefix}` defaults to `/auth`. A provider registered with
+`OAuth2Router::new(endpoint, ...)` (or `Provider::root`) is mounted at
+`{prefix}/login` and `{prefix}/callback` instead, so single-provider
+apps keep their registered redirect URI and can add more providers
+alongside it.
+
+### Redirect URIs behind a proxy
+
+To serve several hostnames, `.redirect(...)` takes an `ExtractRedirect`
+that derives the public origin per request; the router appends the
+provider's callback path and repeats the exact value at the code
+exchange.
+
+| Extractor            | Reads                                                     |
+|----------------------|-----------------------------------------------------------|
+| `http::Uri`          | A fixed origin                                            |
+| `TrustedHeader`      | A custom header set by your proxy                         |
+| `ForwardedHeader`    | RFC 7239 `Forwarded` (rightmost element)                  |
+| `XForwardedHeaders`  | `X-Forwarded-Proto` / `-Host` / `-Port` (rightmost value) |
+
+The header-based extractors trust the request, so only use them when the
+server is reachable exclusively through a proxy that sets those headers.
+
+### Callback checks
+
+Before a session is created, the callback verifies, in order:
+
+1. the RFC 9207 `iss` parameter, per the provider's `IssParameter`
+   policy: `Auto` (checked when present, required when discovery
+   advertises support), `Required`, or `Ignored` to opt out;
+2. the single-use pre-auth session from the signed cookie;
+3. that the callback arrived on the route of the provider the login
+   started with (IdP mix-up defense);
+4. the CSRF state, then the PKCE code exchange;
+5. the ID token, if any: `aud` includes the client id, `azp` (if
+   present) equals it, and `iss` equals the discovered issuer (opt out
+   with `Provider::skip_issuer_validation`, e.g. for Entra's
+   multi-tenant `common` endpoint);
+6. the resolved username (no path separators, control characters, or
+   `..`).
+
+Users and sessions are keyed by `(provider, username)`, so the same
+`sub` at two providers is two users. `JsonFileUserStore` stores the
+root provider's users at `users/<username>.json` and other providers'
+at `users/<provider>/<username>.json`.
+
+`return_to` values must be same-origin paths outside the auth routes;
+backslashes, whitespace, control characters, and dot segments are
+rejected. Anything else falls back to the configured login landing
+page. `OAuth2RouterConfig::with_return_to` builds links using the same
+rules.
+
+See the `oath::server` module docs for details, and `ott` for a
+complete reference app.
+
 ## Security
 
 - All token-bearing types wrap [`secret::Secret`]: they never appear in
@@ -156,18 +291,26 @@ let response = endpoint.poll_device_token(&auth).await?;
   oracles, even though state tokens are short-lived.
 - `OAuth2Client` refreshes proactively: the `expires_at` check runs
   before each request, with a 60-second clock-drift offset built in.
+- The `server` login flow binds each callback to the provider it was
+  started with, checks the RFC 9207 `iss` parameter and the ID token's
+  `iss` / `aud` / `azp`, and only follows same-origin `return_to`
+  paths. See [Callback checks](#callback-checks).
 
 ## What's not in scope
 
 `oath` v1 deliberately stops at the protocol boundary. The following
 are explicit non-goals or punted features:
 
-- **`id_token` signature verification.** `TokenResponse::id_token` is
-  returned as a raw string. Consumers either trust the issuer through
-  TLS or parse claims unverified; signed verification can land when a
-  concrete consumer needs it.
-- **OIDC discovery.** No `.well-known/openid-configuration` parsing yet
-  — configure the URIs explicitly on the builder.
+- **`id_token` signature verification.** `server::parse_id_token`
+  decodes claims without checking the signature, and
+  `server::validate_id_token` checks `iss` / `aud` / `azp` but not the
+  signature, `exp`, or `nonce`. Tokens are trusted because they come
+  straight from the token endpoint over TLS; JWKS-based verification can
+  land when a concrete consumer needs it.
+- **Durable sessions.** `server::InMemorySessionStore` is the only
+  bundled `SessionStore`; sessions are lost on restart.
+- **RP-initiated logout.** `POST {prefix}/logout` ends the local session
+  only; it doesn't sign the user out at the provider.
 - **Automatic 401 retry layer.** The proactive refresh wrapper handles
   normal expiry. Server-side revocation (admin actions, password
   changes) still surfaces as a 401; the caller can recover by invoking

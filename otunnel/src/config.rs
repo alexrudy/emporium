@@ -61,3 +61,49 @@ impl Default for ServerConfig {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The config is logged at startup with `{:?}`; secrets must not appear.
+    #[test]
+    fn debug_output_redacts_secrets() {
+        let config: Config = config::Config::builder()
+            .add_source(config::File::from_str(
+                r#"
+                [provider]
+                client_id = "otunnel"
+                client_secret = "root-client-secret"
+                provider_name = "Bastion"
+                [provider.endpoints]
+                issuer = "https://idp.example.com"
+
+                [providers.google]
+                client_id = "g"
+                client_secret = "google-client-secret"
+                provider_name = "Google"
+                [providers.google.endpoints]
+                issuer = "https://accounts.google.com"
+
+                [sessions]
+                key = "session-signing-key"
+                "#,
+                config::FileFormat::Toml,
+            ))
+            .build()
+            .unwrap()
+            .try_deserialize()
+            .unwrap();
+
+        let debug = format!("{config:?}");
+        for secret in [
+            "root-client-secret",
+            "google-client-secret",
+            "session-signing-key",
+        ] {
+            assert!(!debug.contains(secret), "{secret} leaked: {debug}");
+        }
+        assert!(debug.contains("otunnel"), "non-secret fields still shown");
+    }
+}

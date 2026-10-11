@@ -1,4 +1,23 @@
 //! OTools provides the primitives to implement an OAuth Client via Axum with basic user and session management.
+//!
+//! It wraps [`oath::server`] with the configuration and glue shared by
+//! the gateway-style apps in this workspace (`ogateway`, `otunnel`):
+//!
+//! - [`config::ProvidersConfig`]: `[provider]`, `[providers.<id>]`, and
+//!   `default_provider`, meant to be `#[serde(flatten)]`ed into an app's
+//!   config; [`config::SessionsConfig`] for the cookie key and TTL.
+//! - [`state::AppState`]: router config, providers, and the in-memory
+//!   session store.
+//! - [`build_router`]: resolves every provider (running OIDC discovery)
+//!   and registers it with an [`OAuth2Router`]; [`router_with_chooser`]
+//!   turns that into an `axum::Router`, adding a "Sign in with …" page at
+//!   `{prefix}/login` when there's no default provider.
+//! - [`auth::CurrentUser`] / [`auth::OptionalCurrentUser`]: extractors
+//!   that load the signed-in [`user::AppUser`] (provider + `sub`) from
+//!   the session cookie.
+//!
+//! Users aren't persisted: [`user::NoOpUserStore`] only remembers who has
+//! signed in since startup.
 
 use cookie::Key;
 use oath::server::{InMemorySessionStore, OAuth2Router, Provider};
