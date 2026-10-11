@@ -18,7 +18,10 @@ pub mod user;
 pub async fn build_router<C>(
     state: &AppState,
 ) -> Result<OAuth2Router<InMemorySessionStore, NoOpUserStore, C>, Error> {
-    let endpoint = state.oauth_provider.provider().await?;
+    let endpoint = state
+        .oauth_provider
+        .provider(&state.oauth_router.callback_path())
+        .await?;
 
     let oauth = OAuth2Router::new(
         endpoint,

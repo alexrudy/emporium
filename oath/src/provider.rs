@@ -10,8 +10,8 @@ use crate::{Error, ProviderMetadata, TokenEndpoint};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OAuthProviderConfig {
     /// Public origin the provider's redirect URI lives under.
-    /// Combined with `/auth/callback` to form the redirect URI sent in
-    /// the authorization request.
+    /// Combined with the router's callback path (e.g. `/auth/callback`)
+    /// to form the redirect URI sent in the authorization request.
     #[serde(default, with = "serde_uri_opt")]
     pub external_origin: Option<Uri>,
     /// Display name shown on the "Sign in with X" button.
@@ -27,25 +27,26 @@ pub struct OAuthProviderConfig {
 
 impl OAuthProviderConfig {
     /// Public redirect URI sent in the authorization request: the
-    /// configured `external_origin` joined to `/auth/callback`.
-    pub fn redirect_uri(&self) -> Uri {
-        if let Some(base) = self.external_origin.as_ref().map(ToString::to_string) {
-            let trimmed = base.trim_end_matches('/');
-            format!("{trimmed}/auth/callback")
-                .parse()
-                .expect("validated external_origin + known path is a valid Uri")
-        } else {
-            "/auth/callback"
-                .parse()
-                .expect("valid default redirect_uri")
+    /// configured `external_origin` joined to `callback_path`.
+    ///
+    /// `callback_path` should be the path the callback handler is
+    /// mounted at, e.g. `OAuth2RouterConfig::callback_path()` when
+    /// using the `server` feature.
+    pub fn redirect_uri(&self, callback_path: &str) -> Result<Uri, InvalidUri> {
+        let path = callback_path.trim_start_matches('/');
+        match self.external_origin.as_ref().map(ToString::to_string) {
+            Some(base) => format!("{}/{path}", base.trim_end_matches('/')).parse(),
+            None => format!("/{path}").parse(),
         }
     }
 
-    /// Resolve the provider's endpoints and build a [`TokenEndpoint`].
-    pub async fn provider(&self) -> Result<TokenEndpoint, Error> {
+    /// Resolve the provider's endpoints and build a [`TokenEndpoint`]
+    /// whose redirect URI points at `callback_path`.
+    pub async fn provider(&self, callback_path: &str) -> Result<TokenEndpoint, Error> {
+        let redirect_uri = self.redirect_uri(callback_path)?;
         let builder = TokenEndpoint::builder()
             .client_id(self.client_id.clone())
-            .redirect_uri(self.redirect_uri());
+            .redirect_uri(redirect_uri);
 
         let builder = if let Some(secret) = &self.client_secret {
             builder.client_secret(secret.clone())
@@ -161,6 +162,54 @@ pub fn parse_configured_uri(raw: &str, name: &str) -> Result<Uri, ProviderEndpoi
             uri: raw.into(),
             var: name.into(),
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn config(external_origin: Option<&str>) -> OAuthProviderConfig {
+        OAuthProviderConfig {
+            external_origin: external_origin.map(|o| o.parse().unwrap()),
+            provider_name: "Test".into(),
+            client_id: "client".into(),
+            client_secret: None,
+            endpoints: ProviderEndpoints::Discover {
+                issuer: "https://issuer.example.com".parse().unwrap(),
+            },
+        }
+    }
+
+    #[test]
+    fn redirect_uri_uses_callback_path() {
+        let cfg = config(Some("https://app.example.com"));
+        assert_eq!(
+            cfg.redirect_uri("/oauth/callback").unwrap().to_string(),
+            "https://app.example.com/oauth/callback",
+        );
+    }
+
+    #[test]
+    fn redirect_uri_normalizes_slashes() {
+        let cfg = config(Some("https://app.example.com/"));
+        assert_eq!(
+            cfg.redirect_uri("/auth/callback").unwrap().to_string(),
+            "https://app.example.com/auth/callback",
+        );
+        assert_eq!(
+            cfg.redirect_uri("auth/callback").unwrap().to_string(),
+            "https://app.example.com/auth/callback",
+        );
+    }
+
+    #[test]
+    fn redirect_uri_without_origin_is_relative() {
+        let cfg = config(None);
+        assert_eq!(
+            cfg.redirect_uri("/sso/callback").unwrap().to_string(),
+            "/sso/callback",
+        );
+    }
 }
 
 mod serde_uri {

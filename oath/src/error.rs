@@ -67,6 +67,11 @@ pub enum Error {
     /// no refresh strategy can be constructed.
     #[error("TokenSet has no refresh_token; cannot build a refreshable OAuth2Client")]
     NoRefreshToken,
+
+    /// The redirect URI built from configuration (e.g. `external_origin`
+    /// joined to the callback path) is not a valid URI.
+    #[error("invalid redirect URI: {0}")]
+    InvalidRedirectUri(#[from] http::uri::InvalidUri),
 }
 
 /// An OAuth2 error response body (RFC 6749 §5.2).
