@@ -55,6 +55,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Config::from_env()?
     };
 
+    for provider in config.check_origins()? {
+        tracing::warn!(
+            %provider,
+            "external_origin is ignored: redirect URIs come from [server.origin]"
+        );
+    }
+
     let state = AppState::new(config.oath, config.providers, config.sessions);
 
     let middleware = tower::ServiceBuilder::new()

@@ -15,6 +15,7 @@ chrono-tz.workspace = true
 cookie.workspace = true
 data-encoding.workspace = true
 eyre.workspace = true
+futures.workspace = true
 http.workspace = true
 minijinja.workspace = true
 mime_guess.workspace = true
@@ -24,7 +25,7 @@ secret = { path = "../secret" }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 storage = { path = "../storage" }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "fs"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "fs", "time"] }
 toml.workspace = true
 tower.workspace = true
 tower-http = { workspace = true, features = ["trace"] }

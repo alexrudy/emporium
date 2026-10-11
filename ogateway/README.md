@@ -54,29 +54,40 @@ ogateway adds `[server]`:
 bind_addr = "127.0.0.1:3030"   # default 127.0.0.1:0 (a random port)
 verify_route = "/proxy/verify" # default "/verify"
 
-# Optional: derive each provider's redirect URI from the request's host,
-# so one gateway can serve several hostnames.
+# Where every provider's redirect URI origin comes from.
 [server.origin]
-kind = "x-forwarded"           # or "forwarded", or "trusted-header"
+kind = "x-forwarded"           # or "forwarded", "trusted-header", "fixed"
 # default_scheme = "https"     # when no proto is forwarded
 # header = "X-Gateway-Callback"  # trusted-header only
+# origin = "https://gw.example.com"  # fixed only
 ```
 
 | `kind`           | Reads                                                                |
 |------------------|----------------------------------------------------------------------|
+| `fixed`          | Nothing: one `origin` for every request, for a single-host gateway   |
 | `x-forwarded`    | `X-Forwarded-Proto` / `-Host` / `-Port`, falling back to `Host` (what Caddy's `reverse_proxy` sends by default) |
 | `forwarded`      | RFC 7239 `Forwarded`                                                 |
 | `trusted-header` | A custom header holding `scheme://host` (a full URL works too; only scheme and host are used) |
 
 `trusted_header = "X-Gateway-Callback"` under `[server]` is shorthand
-for `kind = "trusted-header"`. Without an origin source, each provider's
-`external_origin` is used.
+for `kind = "trusted-header"`.
 
-Only use an origin source when ogateway is reachable exclusively through
-the proxy, since these headers come from the request. With one
+Each provider's origin has exactly one source, checked at startup:
+
+- with `[server.origin]`, it applies to every provider, and any
+  provider's `external_origin` is ignored (with a warning);
+- without it, every provider must set `external_origin`, or startup
+  fails.
+
+Only use a header-based kind when ogateway is reachable exclusively
+through the proxy, since those headers come from the request. With one
 configured, register `https://<host>/auth/callback` (for `[provider]`)
 or `https://<host>/auth/<id>/callback` (for `[providers.<id>]`) with
 each provider for **every** host.
+
+A provider whose setup fails at startup (e.g. OIDC discovery times out)
+is logged and left out; the others keep working. See
+[otool's README](../otool/README.md#provider-setup-failures).
 
 ## Proxy setup
 

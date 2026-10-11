@@ -17,7 +17,8 @@ provider_name = "Bastion"
 
 # Public origin the redirect URI lives under. Combined with
 # `/auth/callback` to form the URL you register with the provider.
-# Default: "http://127.0.0.1:3000".
+# Required for every provider unless [server.origin] is set (which then
+# applies to all providers, and this is ignored).
 external_origin = "http://localhost:8080"
 
 [provider.endpoints]
@@ -64,11 +65,20 @@ token_uri = "http://localhost:3000/api/oauth/token"
 bind_addr = "127.0.0.1:3030"
 verify_route = "/proxy/verify"
 
-# Optional: derive redirect URIs from the origin each request arrived on,
-# so one gateway can authenticate several hostnames. Each provider's
-# redirect URI becomes `<origin><callback path>`, and must be registered
-# with the provider for every host. Only trust these headers when the
-# gateway is reachable exclusively through the proxy.
+# Optional: one origin source for every provider, replacing each
+# provider's `external_origin`. Each provider's redirect URI becomes
+# `<origin><callback path>`.
+#
+# A single public host:
+#
+# [server.origin]
+# kind = "fixed"
+# origin = "https://gw.example.com"
+#
+# Or derive it from each request, so one gateway can authenticate several
+# hostnames (register the redirect URI with the provider for every host).
+# Only trust these headers when the gateway is reachable exclusively
+# through the proxy.
 #
 # [server.origin]
 # kind = "x-forwarded"      # X-Forwarded-Proto/-Host/-Port (Caddy's default)

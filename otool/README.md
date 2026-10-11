@@ -116,6 +116,16 @@ combined with `[provider]` (they share the id `default`), if
 `default_provider` names an unknown provider, or if it's combined with
 `[provider]`.
 
+### Provider setup failures
+
+`build_router` sets providers up concurrently, giving each
+`PROVIDER_SETUP_TIMEOUT` (10 seconds) for OIDC discovery. A provider that
+fails or times out is logged at `error` level and left out, so users can
+still sign in with the others; restart to retry it. If it was the
+`default_provider`, `/auth/login` falls back to the only remaining
+provider or the chooser. Startup fails only if *every* provider fails
+(`BuildError::NoProviders`).
+
 ## Limitations
 
 - Sessions and users live in memory and are lost on restart.

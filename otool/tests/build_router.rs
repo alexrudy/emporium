@@ -135,6 +135,78 @@ async fn legacy_provider_keeps_root_callback() {
     );
 }
 
+/// A discovery-configured provider whose issuer refuses connections.
+fn unreachable(name: &str) -> OAuthProviderConfig {
+    serde_json::from_value(serde_json::json!({
+        "provider_name": name,
+        "client_id": format!("{name}-client"),
+        "external_origin": "https://gw.example.com",
+        "endpoints": { "issuer": "http://127.0.0.1:1" },
+    }))
+    .unwrap()
+}
+
+#[tokio::test]
+async fn unavailable_default_provider_falls_back() {
+    let mut providers = ProvidersConfig::default();
+    providers
+        .providers
+        .insert("down".parse().unwrap(), unreachable("down"));
+    providers
+        .providers
+        .insert("okta".parse().unwrap(), provider("okta"));
+    providers.default_provider = Some("down".parse().unwrap());
+    let router = app(providers).await;
+
+    // `okta` is the only provider left, so it serves /auth/login.
+    let (status, location, _) = get(&router, "/auth/login").await;
+    assert!(status.is_redirection(), "{status}");
+    assert!(
+        location
+            .unwrap()
+            .starts_with("https://okta.example.com/authorize?")
+    );
+    let (status, _, _) = get(&router, "/auth/down/login").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn unavailable_root_provider_leaves_the_others() {
+    let mut providers = multi();
+    providers.provider = Some(unreachable("bastion"));
+    let router = app(providers).await;
+
+    // Two providers left and no default: the chooser.
+    let (status, _, body) = get(&router, "/auth/login").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("/auth/google/login"), "{body}");
+    assert!(!body.contains("bastion"), "{body}");
+}
+
+#[tokio::test]
+async fn every_provider_unavailable_is_an_error() {
+    let mut providers = ProvidersConfig {
+        provider: Some(unreachable("bastion")),
+        ..Default::default()
+    };
+    providers
+        .providers
+        .insert("down".parse().unwrap(), unreachable("down"));
+    let state = AppState::new(
+        OAuth2RouterConfig::default(),
+        providers,
+        SessionsConfig::default(),
+    );
+
+    let err = build_router::<http::Uri>(&state).await.unwrap_err();
+    let message = err.to_string();
+    assert!(matches!(err, otool::BuildError::NoProviders(ref f) if f.len() == 2));
+    assert!(
+        message.contains("default") && message.contains("down"),
+        "{message}"
+    );
+}
+
 #[tokio::test]
 async fn invalid_config_is_an_error() {
     let state = AppState::new(

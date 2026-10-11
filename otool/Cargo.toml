@@ -10,18 +10,20 @@ chrono = { workspace = true, features = ["serde"] }
 cookie.workspace = true
 dashmap.workspace = true
 data-encoding.workspace = true
+futures.workspace = true
 http.workspace = true
 oath = { path = "../oath", features = ["server"] }
 secret.path = "../secret"
 serde.workspace = true
 thiserror.workspace = true
+tokio = { workspace = true, features = ["time"] }
 tracing.workspace = true
 
 [dev-dependencies]
 oath = { path = "../oath", features = ["server", "tls-ring"] }
 serde_json.workspace = true
 serde_urlencoded.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "net", "time"] }
 tower = { workspace = true, features = ["util"] }
 
 [features]

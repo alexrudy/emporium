@@ -10,7 +10,7 @@ use axum::Router;
 use axum::routing::get;
 use eyre::Context as _;
 use oath::provider::OAuthProviderConfig;
-use oath::server::{InMemorySessionStore, JsonFileUserStore, OAuth2Router, Provider};
+use oath::server::{InMemorySessionStore, JsonFileUserStore, OAuth2Router, Provider, ProviderId};
 use oath::{Scope, ScopeSet};
 use rust_embed::Embed;
 use storage::LocalDriver;
@@ -72,18 +72,54 @@ async fn main() -> eyre::Result<()> {
     .secure_cookies(config.secure_cookies);
     let router_config = oauth.router_config().clone();
 
-    if let Some(provider) = &config.root_provider {
-        let endpoint =
-            resolve_endpoint("default", provider, &router_config.callback_path()).await?;
-        oauth = oauth.provider(customize(Provider::root(endpoint), provider));
+    // Set up every provider concurrently. One that fails (e.g. its issuer
+    // is down) is logged and left off the home page rather than stopping
+    // startup; only if all of them fail do we give up.
+    let planned: Vec<(Option<&ProviderId>, &OAuthProviderConfig, String)> =
+        config
+            .root_provider
+            .iter()
+            .map(|provider| (None, provider, router_config.callback_path()))
+            .chain(config.providers.iter().map(|(id, provider)| {
+                (Some(id), provider, router_config.provider_callback_path(id))
+            }))
+            .collect();
+    let results = futures::future::join_all(
+        planned
+            .iter()
+            .map(|(_, provider, path)| resolve_endpoint(provider, path)),
+    )
+    .await;
+
+    let mut failed = Vec::new();
+    for ((id, provider, _), result) in planned.into_iter().zip(results) {
+        let name = id.map_or("default", ProviderId::as_str);
+        match result {
+            Ok(endpoint) => {
+                let registered = match id {
+                    None => Provider::root(endpoint),
+                    Some(id) => Provider::new(id.clone(), endpoint),
+                };
+                oauth = oauth.provider(customize(registered, provider));
+            }
+            Err(error) => {
+                tracing::error!(provider = %name, error = %format!("{error:#}"), "skipping OAuth provider");
+                failed.push(name.to_owned());
+            }
+        }
     }
-    for (id, provider) in &config.providers {
-        let callback_path = router_config.provider_callback_path(id);
-        let endpoint = resolve_endpoint(id.as_str(), provider, &callback_path).await?;
-        oauth = oauth.provider(customize(Provider::new(id.clone(), endpoint), provider));
+    if oauth.providers().next().is_none() {
+        return Err(eyre::eyre!(
+            "no OAuth provider could be set up (failed: {})",
+            failed.join(", ")
+        ));
     }
     if let Some(default) = &config.default_provider {
-        oauth = oauth.default_provider(default.clone());
+        if failed.iter().any(|name| name == default.as_str()) {
+            tracing::warn!(provider = %default, "default provider is unavailable");
+        } else {
+            oauth = oauth.default_provider(default.clone());
+        }
     }
 
     let providers: Arc<[ProviderLink]> = oauth
@@ -180,15 +216,17 @@ fn config_path_from_args() -> Option<std::path::PathBuf> {
 /// Build a provider's `TokenEndpoint`, fetching discovery metadata at
 /// startup if it's configured with an issuer.
 async fn resolve_endpoint(
-    id: &str,
     provider: &OAuthProviderConfig,
     callback_path: &str,
 ) -> eyre::Result<oath::TokenEndpoint> {
-    provider
-        .provider(callback_path)
+    tokio::time::timeout(PROVIDER_SETUP_TIMEOUT, provider.provider(callback_path))
         .await
-        .wrap_err_with(|| format!("setting up OAuth provider {id}"))
+        .map_err(|_| eyre::eyre!("timed out after {PROVIDER_SETUP_TIMEOUT:?}"))?
+        .wrap_err("resolving provider endpoints")
 }
+
+/// How long to wait for each provider's endpoints (OIDC discovery).
+const PROVIDER_SETUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
 fn customize(provider: Provider, config: &OAuthProviderConfig) -> Provider {
     let mut provider = provider

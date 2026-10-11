@@ -44,7 +44,10 @@ the explicit URLs go away.
    `/profile` and show the JSON record it persisted.
 
 The discovery fetch happens once, at startup; the resolved
-`token_endpoint` and `authorization_endpoint` are logged. If a
+`token_endpoint` and `authorization_endpoint` are logged. Providers are
+set up concurrently with a 10-second limit each; one that fails is
+logged and left off the sign-in page, and ott only refuses to start if
+every provider fails. If a
 provider doesn't publish a discovery document, pin the URLs by hand:
 set `OAUTH_AUTH_URI` and `OAUTH_TOKEN_URI` instead of `OAUTH_ISSUER`.
 

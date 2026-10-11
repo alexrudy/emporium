@@ -20,13 +20,21 @@ use serde::{Deserialize, Serialize};
 ///
 /// ```toml
 /// [server.origin]
-/// kind = "x-forwarded"      # or "forwarded", or "trusted-header"
+/// kind = "x-forwarded"      # or "forwarded", "trusted-header", "fixed"
 /// default_scheme = "https"  # forwarded / x-forwarded only, optional
 /// # header = "X-Gateway-Callback"   # trusted-header only
+/// # origin = "https://gw.example.com"  # fixed only
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum OriginConfig {
+    /// One public origin for every request, e.g. `https://gw.example.com`.
+    /// Use this instead of repeating `external_origin` in every provider
+    /// when the gateway serves a single host.
+    Fixed {
+        /// The origin (scheme and host; any path is ignored).
+        origin: String,
+    },
     /// A custom header containing the origin, e.g. Caddy's
     /// `header_up X-Gateway-Callback {scheme}://{host}`.
     TrustedHeader {
@@ -72,6 +80,8 @@ impl From<DefaultScheme> for Scheme {
 /// Runtime extractor built from an [`OriginConfig`].
 #[derive(Debug, Clone)]
 pub enum OriginExtractor {
+    /// See [`OriginConfig::Fixed`].
+    Fixed(Uri),
     /// See [`OriginConfig::TrustedHeader`].
     TrustedHeader(TrustedHeader),
     /// See [`OriginConfig::Forwarded`].
@@ -85,6 +95,18 @@ impl TryFrom<&OriginConfig> for OriginExtractor {
 
     fn try_from(config: &OriginConfig) -> Result<Self, Self::Error> {
         Ok(match config {
+            OriginConfig::Fixed { origin } => {
+                let uri: Uri = origin
+                    .parse()
+                    .with_context(|| format!("invalid server.origin.origin {origin:?}"))?;
+                if uri.scheme().is_none() || uri.authority().is_none() {
+                    eyre::bail!(
+                        "server.origin.origin {origin:?} must include a scheme and host, \
+                         e.g. https://gw.example.com"
+                    );
+                }
+                Self::Fixed(uri)
+            }
             OriginConfig::TrustedHeader { header } => Self::TrustedHeader(TrustedHeader::from(
                 http::HeaderName::from_str(header)
                     .with_context(|| format!("invalid trusted header name {header:?}"))?,
@@ -110,6 +132,7 @@ impl TryFrom<&OriginConfig> for OriginExtractor {
 impl ExtractRedirect for OriginExtractor {
     async fn from_request_parts(&self, request: &mut Parts) -> Result<Uri, ServerError> {
         match self {
+            Self::Fixed(origin) => origin.from_request_parts(request).await,
             Self::TrustedHeader(extractor) => extractor.from_request_parts(request).await,
             Self::Forwarded(extractor) => extractor.from_request_parts(request).await,
             Self::XForwarded(extractor) => extractor.from_request_parts(request).await,
@@ -167,6 +190,30 @@ mod tests {
             .await,
             "https://c.example.com/"
         );
+    }
+
+    #[tokio::test]
+    async fn fixed_origin_ignores_headers() {
+        assert_eq!(
+            origin(
+                OriginConfig::Fixed {
+                    origin: "https://gw.example.com".into()
+                },
+                &[("x-forwarded-host", "evil.example.com")],
+            )
+            .await,
+            "https://gw.example.com/"
+        );
+    }
+
+    #[test]
+    fn fixed_origin_needs_scheme_and_host() {
+        for bad in ["gw.example.com", "/auth", "not a uri"] {
+            assert!(
+                OriginExtractor::try_from(&OriginConfig::Fixed { origin: bad.into() }).is_err(),
+                "{bad:?}"
+            );
+        }
     }
 
     #[test]

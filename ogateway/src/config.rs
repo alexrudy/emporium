@@ -80,6 +80,49 @@ impl Default for ServerConfig {
     }
 }
 
+impl Config {
+    /// Check that each provider's redirect URI has exactly one source.
+    ///
+    /// With `[server.origin]`, the origin comes from there and providers'
+    /// `external_origin` is ignored: those providers are returned so the
+    /// caller can warn. Without it, every provider needs an
+    /// `external_origin`, or its redirect URI would be a bare path that
+    /// providers reject.
+    pub fn check_origins(&self) -> eyre::Result<Vec<String>> {
+        let providers = self
+            .providers
+            .provider
+            .iter()
+            .map(|p| ("[provider]".to_owned(), p))
+            .chain(
+                self.providers
+                    .providers
+                    .iter()
+                    .map(|(id, p)| (format!("[providers.{id}]"), p)),
+            );
+
+        if self.server.origin()?.is_some() {
+            return Ok(providers
+                .filter(|(_, p)| p.external_origin.is_some())
+                .map(|(name, _)| name)
+                .collect());
+        }
+
+        let missing: Vec<_> = providers
+            .filter(|(_, p)| p.external_origin.is_none())
+            .map(|(name, _)| name)
+            .collect();
+        if !missing.is_empty() {
+            eyre::bail!(
+                "{} need an external_origin, or set [server.origin] \
+                 (e.g. kind = \"fixed\", origin = \"https://gw.example.com\") for all providers",
+                missing.join(", ")
+            );
+        }
+        Ok(Vec::new())
+    }
+}
+
 impl ServerConfig {
     /// The configured origin source, resolving the `trusted_header`
     /// shorthand.
@@ -255,6 +298,80 @@ mod tests {
             .map(|p| p.iss_parameter)
             .collect();
         assert_eq!(iss, [IssParameter::Auto, IssParameter::Ignored]);
+    }
+
+    const PROVIDERS: &str = r#"
+        [provider]
+        client_id = "r"
+        provider_name = "Root"
+        {root_origin}
+        [provider.endpoints]
+        issuer = "https://idp.example.com"
+
+        [providers.google]
+        client_id = "g"
+        provider_name = "Google"
+        [providers.google.endpoints]
+        issuer = "https://accounts.google.com"
+    "#;
+
+    fn with_root_origin(root_origin: &str, server: &str) -> Config {
+        full(&format!(
+            "{}\n{server}",
+            PROVIDERS.replace("{root_origin}", root_origin)
+        ))
+    }
+
+    #[test]
+    fn origins_need_a_source() {
+        let cfg = with_root_origin(r#"external_origin = "https://gw.example.com""#, "");
+        let err = cfg.check_origins().unwrap_err().to_string();
+        assert!(err.contains("[providers.google]"), "{err}");
+        assert!(!err.contains("[provider]"), "{err}");
+    }
+
+    #[test]
+    fn server_origin_makes_external_origin_redundant() {
+        let cfg = with_root_origin(
+            r#"external_origin = "https://gw.example.com""#,
+            "[server.origin]\nkind = \"fixed\"\norigin = \"https://gw.example.com\"",
+        );
+        assert_eq!(cfg.check_origins().unwrap(), ["[provider]"]);
+
+        let cfg = with_root_origin("", "[server.origin]\nkind = \"x-forwarded\"");
+        assert!(cfg.check_origins().unwrap().is_empty());
+    }
+
+    #[test]
+    fn every_provider_with_external_origin_is_fine() {
+        let cfg = full(
+            r#"
+            [providers.google]
+            client_id = "g"
+            provider_name = "Google"
+            external_origin = "https://gw.example.com"
+            [providers.google.endpoints]
+            issuer = "https://accounts.google.com"
+            "#,
+        );
+        assert!(cfg.check_origins().unwrap().is_empty());
+    }
+
+    #[test]
+    fn fixed_origin_parses() {
+        let cfg = server(
+            r#"
+            [origin]
+            kind = "fixed"
+            origin = "https://gw.example.com"
+            "#,
+        );
+        assert_eq!(
+            cfg.origin().unwrap(),
+            Some(OriginConfig::Fixed {
+                origin: "https://gw.example.com".into()
+            })
+        );
     }
 
     #[test]
