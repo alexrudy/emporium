@@ -7,6 +7,7 @@ use cookie::Key;
 use oath::server::{InMemorySessionStore, OAuth2RouterConfig};
 
 use crate::config::{ProvidersConfig, SessionsConfig};
+use crate::user::InMemoryUserStore;
 
 /// The application state, holding configuration and session state.
 #[derive(Debug, Clone)]
@@ -22,6 +23,9 @@ pub struct AppState {
 
     /// The session store for managing user sessions.
     pub sessions_store: InMemorySessionStore,
+
+    /// Profiles (display names) of users who have signed in.
+    pub users_store: InMemoryUserStore,
 }
 
 impl AppState {
@@ -36,6 +40,7 @@ impl AppState {
             providers,
             sessions,
             sessions_store: InMemorySessionStore::new(Duration::from_hours(48)),
+            users_store: InMemoryUserStore::new(),
         }
     }
 }

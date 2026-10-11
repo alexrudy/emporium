@@ -26,7 +26,7 @@ use std::str::FromStr as _;
 use http::uri::{Authority, Scheme};
 use http::{HeaderMap, HeaderName, Uri};
 use hyproxy::headers::forward::{
-    ForwardedHeader as ForwardedHeaderValue, ForwardedHost, ForwardedProtocol, X_FORWARDED_HOST,
+    ForwardedHost, ForwardedProtocol, ForwardingChain, X_FORWARDED_HOST, X_FORWARDED_PORT,
     X_FORWARDED_PROTO,
 };
 use thiserror::Error;
@@ -109,8 +109,6 @@ impl ExtractRedirect for TrustedHeader {
     }
 }
 
-const X_FORWARDED_PORT: HeaderName = HeaderName::from_static("x-forwarded-port");
-
 /// The forwarding headers didn't yield a usable origin.
 #[derive(Debug, Error)]
 pub enum ForwardedError {
@@ -180,21 +178,22 @@ impl ForwardedHeader {
     }
 
     fn origin(&self, parts: &http::request::Parts) -> Result<Uri, ForwardedError> {
-        // Repeated headers form one comma-separated list, so the rightmost
-        // element is the last element of the last header line.
-        let last_line = parts
-            .headers
-            .get_all(http::header::FORWARDED)
-            .iter()
-            .next_back()
+        // Repeated headers form one comma-separated list; the last record
+        // is the one appended by the closest proxy. Only it has to parse:
+        // anything before it came from further away, possibly the client.
+        let chain = ForwardingChain::from_headers(&parts.headers);
+        let record = chain
+            .last_record()
             .ok_or(ForwardedError::Missing("forwarded"))?;
-        let header = ForwardedHeaderValue::parse_header_value(last_line)
-            .map_err(|error| ForwardedError::MalformedForwarded(error.into()))?;
-        let element = header
-            .iter()
-            .last()
-            .and_then(|record| record.value())
-            .ok_or(ForwardedError::Missing("forwarded"))?;
+        let element = record.value().ok_or_else(|| {
+            ForwardedError::MalformedForwarded(
+                format!(
+                    "unparseable record {:?}",
+                    String::from_utf8_lossy(record.raw().unwrap_or_default())
+                )
+                .into(),
+            )
+        })?;
 
         let scheme = match &element.proto {
             Some(proto) => Some(http_scheme(proto)?),
@@ -314,14 +313,13 @@ fn rightmost<T>(
 
 /// Only `http` and `https` make sense for a redirect URI.
 fn http_scheme(proto: &ForwardedProtocol) -> Result<Scheme, ForwardedError> {
-    let raw = proto.as_bytes();
-    let raw = String::from_utf8_lossy(&raw);
-    if raw.eq_ignore_ascii_case("https") {
-        Ok(Scheme::HTTPS)
-    } else if raw.eq_ignore_ascii_case("http") {
-        Ok(Scheme::HTTP)
+    let scheme = proto.scheme();
+    if scheme == &Scheme::HTTPS || scheme == &Scheme::HTTP {
+        Ok(scheme.clone())
     } else {
-        Err(ForwardedError::UnsupportedScheme(raw.into_owned()))
+        Err(ForwardedError::UnsupportedScheme(
+            scheme.as_str().to_owned(),
+        ))
     }
 }
 
@@ -346,15 +344,14 @@ fn build_origin(
     let port = host.port().or(port.filter(|&p| p != default_port));
     let host = ForwardedHost::new(host.host().to_owned(), port);
 
-    let authority = Authority::try_from(host.as_bytes().as_ref()).map_err(|_| {
-        ForwardedError::InvalidHost(String::from_utf8_lossy(&host.as_bytes()).into())
-    })?;
+    let invalid = || ForwardedError::InvalidHost(String::from_utf8_lossy(&host.to_bytes()).into());
+    let authority = Authority::try_from(host.to_bytes().as_ref()).map_err(|_| invalid())?;
     Uri::builder()
         .scheme(scheme)
         .authority(authority)
         .path_and_query("/")
         .build()
-        .map_err(|_| ForwardedError::InvalidHost(String::from_utf8_lossy(&host.as_bytes()).into()))
+        .map_err(|_| invalid())
 }
 
 /// The request's own host: the `Host` header, or the HTTP/2 `:authority`.
@@ -495,6 +492,25 @@ mod tests {
             forwarded(&[("forwarded", r#"proto=https;host="app.example.com:8443""#)]).unwrap(),
             "https://app.example.com:8443/"
         );
+    }
+
+    #[test]
+    fn forwarded_ignores_malformed_values_before_the_last() {
+        assert_eq!(
+            forwarded(&[
+                ("forwarded", "this is ;; not valid"),
+                ("forwarded", "proto=https;host=app.example.com"),
+            ])
+            .unwrap(),
+            "https://app.example.com/"
+        );
+        assert!(matches!(
+            forwarded(&[
+                ("forwarded", "proto=https;host=app.example.com"),
+                ("forwarded", "this is ;; not valid"),
+            ]),
+            Err(ForwardedError::MalformedForwarded(_))
+        ));
     }
 
     #[test]

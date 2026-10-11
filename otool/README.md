@@ -12,11 +12,12 @@ signed-in user.
 |----------------------------------------|----------------------------------------------------------------------|
 | `config::ProvidersConfig`              | `[provider]` / `[providers.<id>]` / `default_provider` config        |
 | `config::SessionsConfig`               | Cookie signing key and session TTL                                   |
-| `state::AppState`                      | Router config, providers, in-memory session store                    |
+| `state::AppState`                      | Router config, providers, in-memory session and user stores          |
 | `build_router`                         | Resolve every provider (OIDC discovery) into an `OAuth2Router`       |
 | `router_with_chooser`                  | `OAuth2Router` → `axum::Router`, plus a chooser at `{prefix}/login` |
 | `auth::CurrentUser` / `OptionalCurrentUser` | Extractors for the signed-in `AppUser`                          |
-| `user::AppUser`                        | `provider` + `username` (the OIDC `sub`); displays as `provider:sub` |
+| `user::AppUser`                        | `provider`, `username` (the OIDC `sub`), and `display_name`; displays as `Alice (provider:sub)` |
+| `user::InMemoryUserStore`              | Remembers each signed-in user's display name                         |
 
 ## Usage
 
@@ -158,5 +159,6 @@ provider or the chooser. Startup fails only if *every* provider fails
 ## Limitations
 
 - Sessions and users live in memory and are lost on restart.
-- `AppUser` carries only the provider and `sub`; other claims aren't
-  kept.
+- `AppUser` carries the provider, `sub`, and a display name (the ID
+  token's `name`, else `preferred_username`, else `email`); other claims
+  aren't kept.

@@ -13,11 +13,11 @@
 //!   turns that into an `axum::Router`, adding a "Sign in with …" page at
 //!   `{prefix}/login` when there's no default provider.
 //! - [`auth::CurrentUser`] / [`auth::OptionalCurrentUser`]: extractors
-//!   that load the signed-in [`user::AppUser`] (provider + `sub`) from
-//!   the session cookie.
+//!   that load the signed-in [`user::AppUser`] (provider, `sub`, and
+//!   display name) from the session cookie.
 //!
-//! Users aren't persisted: [`user::NoOpUserStore`] only remembers who has
-//! signed in since startup.
+//! Users aren't persisted: [`user::InMemoryUserStore`] only remembers
+//! who has signed in since startup, and their display name.
 
 use std::time::Duration;
 
@@ -26,7 +26,7 @@ use oath::server::{InMemorySessionStore, OAuth2Router, Provider, ProviderId};
 use thiserror::Error;
 
 use self::config::{OAuthProviderConfig, ProvidersConfigError};
-use self::{state::AppState, user::NoOpUserStore};
+use self::{state::AppState, user::InMemoryUserStore};
 
 pub mod auth;
 pub mod chooser;
@@ -95,14 +95,14 @@ pub enum ProviderSetupError {
 /// chooser). Only if *every* provider fails is this an error.
 pub async fn build_router<C>(
     state: &AppState,
-) -> Result<OAuth2Router<InMemorySessionStore, NoOpUserStore, C>, BuildError> {
+) -> Result<OAuth2Router<InMemorySessionStore, InMemoryUserStore, C>, BuildError> {
     build_router_with_timeout(state, PROVIDER_SETUP_TIMEOUT).await
 }
 
 async fn build_router_with_timeout<C>(
     state: &AppState,
     timeout: Duration,
-) -> Result<OAuth2Router<InMemorySessionStore, NoOpUserStore, C>, BuildError> {
+) -> Result<OAuth2Router<InMemorySessionStore, InMemoryUserStore, C>, BuildError> {
     let providers = &state.providers;
     providers.validate()?;
     let router_config = &state.oauth_router;
@@ -139,7 +139,7 @@ async fn build_router_with_timeout<C>(
 
     let mut oauth = OAuth2Router::multi_provider(
         state.sessions_store.clone(),
-        NoOpUserStore::new(),
+        state.users_store.clone(),
         user::identity_resolver(),
         Key::from(state.sessions.key.revealed().as_bytes()),
     )
