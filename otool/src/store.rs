@@ -9,6 +9,7 @@
 //! |------------|---------------|-----------|
 //! | `"memory"` | (always)      | no        |
 //! | `"sqlite"` | `sqlite`      | yes       |
+//! | `"valkey"` | `valkey`      | yes       |
 //!
 //! Every backend can be named in config; choosing one that isn't
 //! compiled in fails at startup with [`StoreError::Disabled`].
@@ -20,6 +21,7 @@ use std::time::Duration;
 use oath::server::{
     InMemorySessionStore, ProviderId, SessionData, SessionId, SessionStore, UserStore,
 };
+use secret::Secret;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -37,7 +39,14 @@ const PRUNE_INTERVAL: Duration = Duration::from_secs(60 * 60);
 /// backend = "sqlite"
 /// path = "/var/lib/myapp/auth.sqlite3"
 /// ```
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// ```toml
+/// [sessions.store]
+/// backend = "valkey"
+/// url = "redis://:password@127.0.0.1:6379"
+/// prefix = "myapp" # optional, default "oath"
+/// ```
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(tag = "backend", rename_all = "lowercase")]
 pub enum StoreConfig {
     /// In process memory: everyone is signed out on restart.
@@ -48,6 +57,15 @@ pub enum StoreConfig {
     Sqlite {
         /// Path to the database file.
         path: PathBuf,
+    },
+    /// A Valkey (or Redis) server. Requires the `valkey` feature.
+    Valkey {
+        /// Server URL, e.g. `redis://127.0.0.1:6379` or `rediss://` for
+        /// TLS. Kept secret since it may hold a password.
+        url: Secret,
+        /// Key prefix, to share a server between apps. Default: `oath`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        prefix: Option<String>,
     },
 }
 
@@ -66,6 +84,11 @@ pub enum StoreError {
     #[cfg(feature = "sqlite")]
     #[error("sqlite store error")]
     Sqlite(#[from] olite::Error),
+
+    /// The Valkey backend failed.
+    #[cfg(feature = "valkey")]
+    #[error("valkey store error")]
+    Valkey(#[from] ovalkey::Error),
 }
 
 impl From<Infallible> for StoreError {
@@ -88,7 +111,8 @@ impl StoreConfig {
     ///
     /// Backends that don't expire sessions themselves get a background
     /// task pruning them every hour, so this must be called within a
-    /// tokio runtime.
+    /// tokio runtime. Valkey must be reachable now; it reconnects on its
+    /// own afterwards.
     pub async fn open(&self, ttl: Duration) -> Result<Stores, StoreError> {
         match self {
             Self::Memory => Ok(Stores {
@@ -107,6 +131,22 @@ impl StoreConfig {
             }
             #[cfg(not(feature = "sqlite"))]
             Self::Sqlite { .. } => Err(StoreError::Disabled("sqlite")),
+            #[cfg(feature = "valkey")]
+            Self::Valkey { url, prefix } => {
+                let mut valkey = ovalkey::Valkey::connect(url.revealed()).await?;
+                if let Some(prefix) = prefix {
+                    valkey = valkey.with_prefix(prefix.clone());
+                }
+                Ok(Stores {
+                    sessions: Sessions::Valkey(ovalkey::ValkeySessionStore::new(
+                        valkey.clone(),
+                        ttl,
+                    )),
+                    users: Users::Valkey(ovalkey::ValkeyUserStore::new(valkey)),
+                })
+            }
+            #[cfg(not(feature = "valkey"))]
+            Self::Valkey { .. } => Err(StoreError::Disabled("valkey")),
         }
     }
 }
@@ -134,6 +174,9 @@ pub enum Sessions {
     /// See [`StoreConfig::Sqlite`].
     #[cfg(feature = "sqlite")]
     Sqlite(olite::SqliteSessionStore),
+    /// See [`StoreConfig::Valkey`].
+    #[cfg(feature = "valkey")]
+    Valkey(ovalkey::ValkeySessionStore),
 }
 
 #[async_trait::async_trait]
@@ -145,6 +188,8 @@ impl SessionStore for Sessions {
             Self::Memory(store) => Ok(store.create(data).await?),
             #[cfg(feature = "sqlite")]
             Self::Sqlite(store) => Ok(store.create(data).await?),
+            #[cfg(feature = "valkey")]
+            Self::Valkey(store) => Ok(store.create(data).await?),
         }
     }
 
@@ -153,6 +198,8 @@ impl SessionStore for Sessions {
             Self::Memory(store) => Ok(store.get(id).await?),
             #[cfg(feature = "sqlite")]
             Self::Sqlite(store) => Ok(store.get(id).await?),
+            #[cfg(feature = "valkey")]
+            Self::Valkey(store) => Ok(store.get(id).await?),
         }
     }
 
@@ -161,6 +208,8 @@ impl SessionStore for Sessions {
             Self::Memory(store) => Ok(store.delete(id).await?),
             #[cfg(feature = "sqlite")]
             Self::Sqlite(store) => Ok(store.delete(id).await?),
+            #[cfg(feature = "valkey")]
+            Self::Valkey(store) => Ok(store.delete(id).await?),
         }
     }
 }
@@ -173,6 +222,9 @@ pub enum Users {
     /// See [`StoreConfig::Sqlite`].
     #[cfg(feature = "sqlite")]
     Sqlite(olite::SqliteUserStore<UserProfile>),
+    /// See [`StoreConfig::Valkey`].
+    #[cfg(feature = "valkey")]
+    Valkey(ovalkey::ValkeyUserStore<UserProfile>),
 }
 
 #[async_trait::async_trait]
@@ -189,6 +241,8 @@ impl UserStore for Users {
             Self::Memory(store) => Ok(store.get(provider, username).await?),
             #[cfg(feature = "sqlite")]
             Self::Sqlite(store) => Ok(store.get(provider, username).await?),
+            #[cfg(feature = "valkey")]
+            Self::Valkey(store) => Ok(store.get(provider, username).await?),
         }
     }
 
@@ -202,6 +256,8 @@ impl UserStore for Users {
             Self::Memory(store) => Ok(store.put(provider, username, data).await?),
             #[cfg(feature = "sqlite")]
             Self::Sqlite(store) => Ok(store.put(provider, username, data).await?),
+            #[cfg(feature = "valkey")]
+            Self::Valkey(store) => Ok(store.put(provider, username, data).await?),
         }
     }
 }
@@ -218,13 +274,28 @@ mod tests {
 
     #[test]
     fn parses_backends() {
-        assert_eq!(parse(r#"backend = "memory""#), StoreConfig::Memory);
-        assert_eq!(
+        assert!(matches!(
+            parse(r#"backend = "memory""#),
+            StoreConfig::Memory
+        ));
+        assert!(matches!(
             parse("backend = \"sqlite\"\npath = \"/tmp/auth.sqlite3\""),
-            StoreConfig::Sqlite {
-                path: "/tmp/auth.sqlite3".into()
-            }
-        );
+            StoreConfig::Sqlite { path } if path == std::path::Path::new("/tmp/auth.sqlite3")
+        ));
+        assert!(matches!(
+            parse("backend = \"valkey\"\nurl = \"redis://localhost\""),
+            StoreConfig::Valkey { url, prefix: None } if url.revealed() == "redis://localhost"
+        ));
+        assert!(matches!(
+            parse("backend = \"valkey\"\nurl = \"redis://localhost\"\nprefix = \"app\""),
+            StoreConfig::Valkey { prefix: Some(prefix), .. } if prefix == "app"
+        ));
+    }
+
+    #[test]
+    fn debug_hides_valkey_url() {
+        let config = parse("backend = \"valkey\"\nurl = \"redis://:hunter2@localhost\"");
+        assert!(!format!("{config:?}").contains("hunter2"));
     }
 
     async fn round_trip(stores: &Stores) {
@@ -276,6 +347,35 @@ mod tests {
         assert!(matches!(
             config.open(TTL).await,
             Err(StoreError::Disabled("sqlite"))
+        ));
+    }
+
+    /// Runs against the server named by `OVALKEY_TEST_URL`; skipped when
+    /// it's unset.
+    #[cfg(feature = "valkey")]
+    #[tokio::test]
+    async fn valkey_round_trip() {
+        let Ok(url) = std::env::var("OVALKEY_TEST_URL") else {
+            eprintln!("skipping: set OVALKEY_TEST_URL to run against Valkey");
+            return;
+        };
+        let config = StoreConfig::Valkey {
+            url: url.into(),
+            prefix: Some(format!("otool-test-{}", SessionId::generate().as_str())),
+        };
+        round_trip(&config.open(TTL).await.unwrap()).await;
+    }
+
+    #[cfg(not(feature = "valkey"))]
+    #[tokio::test]
+    async fn valkey_without_feature_is_an_error() {
+        let config = StoreConfig::Valkey {
+            url: "redis://localhost".into(),
+            prefix: None,
+        };
+        assert!(matches!(
+            config.open(TTL).await,
+            Err(StoreError::Disabled("valkey"))
         ));
     }
 }

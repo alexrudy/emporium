@@ -99,7 +99,13 @@ verify_route = "/proxy/verify"
 key = "czQckxOIiK4pUqc2z1XsaG+YLSWg+cv7p3PueCMkx3ByjchuoGbh5G+E/NS0IlNeSKUAnNljfaHsJ9fcvpCFhQ=="
 
 # Where sessions and user profiles are kept. Default: in memory, so a
-# restart signs everyone out. "sqlite" needs the `sqlite` cargo feature.
+# restart signs everyone out. Other backends need the cargo feature of the
+# same name.
 # [sessions.store]
 # backend = "sqlite"
 # path = "auth.sqlite3"
+#
+# [sessions.store]
+# backend = "valkey"
+# url = "redis://127.0.0.1:6379"
+# prefix = "oath" # optional

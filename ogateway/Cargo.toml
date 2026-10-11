@@ -23,6 +23,7 @@ tracing.workspace = true
 
 [features]
 sqlite = ["otool/sqlite"]
+valkey = ["otool/valkey"]
 tls-ring = ["oath/tls-ring", "otool/tls-ring", "hyperdriver/tls-ring"]
 tls-aws-lc = ["oath/tls-aws-lc", "otool/tls-aws-lc", "hyperdriver/tls-aws-lc"]
 

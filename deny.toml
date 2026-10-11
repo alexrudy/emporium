@@ -18,6 +18,7 @@ allow = [
     # "Unicode-DFS-2016",
     "Unicode-3.0",
     "BSD-3-Clause",
+    "BSL-1.0", # xxhash-rust, via redis
     # "OpenSSL",
     "Zlib"
 ]

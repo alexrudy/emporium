@@ -27,6 +27,7 @@ uuid.workspace = true
 
 [features]
 sqlite = ["otool/sqlite"]
+valkey = ["otool/valkey"]
 tls-ring = ["hyperdriver/tls-ring"]
 tls-aws-lc = ["hyperdriver/tls-aws-lc"]
 

@@ -19,8 +19,8 @@
 //!   display name) from the session cookie.
 //!
 //! By default sessions and users live in memory and are lost on restart;
-//! with the `sqlite` feature, `[sessions.store]` can keep them in a
-//! SQLite database instead.
+//! with the `sqlite` or `valkey` feature, `[sessions.store]` can keep
+//! them in a SQLite database or a Valkey server instead.
 
 use std::time::Duration;
 

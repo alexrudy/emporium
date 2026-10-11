@@ -15,6 +15,7 @@ futures.workspace = true
 http.workspace = true
 oath = { path = "../oath", features = ["server"] }
 olite = { path = "../olite", optional = true }
+ovalkey = { path = "../ovalkey", optional = true }
 secret.path = "../secret"
 serde.workspace = true
 thiserror.workspace = true
@@ -33,6 +34,8 @@ tower = { workspace = true, features = ["util"] }
 [features]
 # Allow `[sessions.store] backend = "sqlite"`.
 sqlite = ["dep:olite"]
+# Allow `[sessions.store] backend = "valkey"`.
+valkey = ["dep:ovalkey"]
 tls-ring = ["oath/tls-ring"]
 tls-aws-lc = ["oath/tls-aws-lc"]
 
