@@ -1,8 +1,9 @@
 # ott — OAuth Test Tool
 
 A small axum web app that exercises the `oath` crate end-to-end. It
-serves a "Sign in" page, walks you through an OIDC provider, and
-shows the resulting user record on a profile page.
+serves a "Sign in" page with a button per configured provider, walks
+you through an OIDC provider, and shows the resulting user record on a
+profile page.
 
 ```
   ┌─────────┐    GET /          ┌──────────┐    GET /auth/login    ┌──────────┐
@@ -10,7 +11,7 @@ shows the resulting user record on a profile page.
   │         │ ◄────────────────  │          │ ◄──── callback ────── │          │
   └─────────┘    /profile        └──────────┘                       └──────────┘
                                        │
-                                       └── writes users/<sub>.json (LocalDriver)
+                                       └── writes users/<provider>:<sub>.json (LocalDriver)
 ```
 
 ## Quick start (Google, discovery mode)
@@ -64,9 +65,11 @@ set `OAUTH_AUTH_URI` and `OAUTH_TOKEN_URI` instead of `OAUTH_ISSUER`.
 
 After signing in once, you should see:
 
-- `users/<sub>.json` exists under `DATA_DIR` (defaults to `./data/`).
-- The profile page shows `Subject`, `Email`, `verified` badge, the
-  timestamps, and a pretty-printed JSON of the stored record.
+- `users/<provider>:<sub>.json` exists under `DATA_DIR` (defaults to
+  `./data/`). The single `[oauth]` / `OAUTH_*` provider's id is
+  `default`.
+- The profile page shows `Provider`, `Subject`, `Email`, `verified`
+  badge, the timestamps, and a pretty-printed JSON of the stored record.
 - Clicking **Sign out** redirects to `/`, deletes the in-memory
   session, and clears the `oath_session` cookie.
 - Signing in again updates `last_login_at` (and currently
@@ -104,6 +107,20 @@ based on your deployment style.
 | `DATA_DIR`            | no       | `./data`                      |
 | `SECURE_COOKIES`      | no       | `true`                        |
 | `RUST_LOG`            | no       | `info,ott=debug,tower_http=info` |
+| `OAUTH_PROVIDERS`     | no       | — (comma-separated ids)       |
+| `OAUTH_<ID>_*`        | per id   | see below                     |
+| `OAUTH_DEFAULT_PROVIDER` | no    | —                             |
+
+**Multiple providers.** The unprefixed `OAUTH_*` vars configure a
+single provider served at `/auth/login`. To add more, list ids in
+`OAUTH_PROVIDERS` and configure each with `OAUTH_<ID>_CLIENT_ID`,
+`OAUTH_<ID>_CLIENT_SECRET`, `OAUTH_<ID>_ISSUER` (or `_AUTH_URI` +
+`_TOKEN_URI`), and optionally `OAUTH_<ID>_PROVIDER_NAME` and
+`OAUTH_<ID>_SCOPES`. `<ID>` is the id upper-cased with `-` replaced by
+`_`. Each named provider is served at `/auth/<id>/login`. With named
+providers configured, the unprefixed provider is optional. In TOML, the
+equivalent is a `[providers.<id>]` table per provider (see
+[`ott.toml.example`](ott.toml.example)).
 
 **Endpoint resolution.** Set *either* `OAUTH_ISSUER` (discovery —
 ott fetches `<issuer>/.well-known/openid-configuration` at startup
@@ -112,11 +129,12 @@ and uses the `authorization_endpoint`, `token_endpoint`, and any
 `OAUTH_AUTH_URI` and `OAUTH_TOKEN_URI` explicitly. If both are set,
 `OAUTH_ISSUER` wins.
 
-The redirect URI registered with the provider must exactly match
-`{EXTERNAL_ORIGIN}/auth/callback`. ott prints both the configured
-provider and the resolved callback URL on startup; cross-check those
-against the provider console if a callback comes back with
-`redirect_uri_mismatch`.
+The redirect URI registered with each provider must exactly match
+`{EXTERNAL_ORIGIN}/auth/callback` for the unprefixed provider, or
+`{EXTERNAL_ORIGIN}/auth/<id>/callback` for a named one. ott logs each
+provider's callback URL on startup and lists them on the home page;
+cross-check those against the provider console if a callback comes
+back with `redirect_uri_mismatch`.
 
 ## Architecture
 
@@ -127,8 +145,8 @@ against the provider console if a callback comes back with
   baked in via `include_str!`.
 - `src/state.rs` — `AppState` cloned into every handler.
 - `src/auth.rs` — `CurrentUser` / `OptionalCurrentUser` axum
-  extractors. They read the signed `oath_session` cookie, hit the
-  session store, then the user store; missing/invalid → `Redirect::to("/")`.
+  extractors. They read the signed session cookie, hit the session
+  store, then the user store; missing/invalid → `Redirect::to("/")`.
 - `src/handlers.rs` — three handlers (home, profile, healthz).
 - `src/main.rs` — assembles the `OAuth2Router` from `oath::server`,
   merges it with ott's own routes, applies `TraceLayer`, and serves.
@@ -156,7 +174,7 @@ for the per-grant breakdown.
 ## Development
 
 ```sh
-cargo test  -p ott    # 13 unit tests covering config parse + template render
+cargo test  -p ott    # unit tests covering config parse + template render
 cargo clippy -p ott --all-targets -- -D warnings
 cargo run   -p ott    # with env vars set as above
 ```

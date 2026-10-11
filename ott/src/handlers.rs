@@ -29,8 +29,7 @@ pub async fn home(
         .expect("home.html template was registered at startup");
     let body = tmpl
         .render(context! {
-            provider_name => &state.config.provider_name,
-            redirect_uri => state.config.redirect_uri().to_string(),
+            providers => &*state.providers,
         })
         .expect("home.html renders cleanly with built-in context");
     Html(body).into_response()
@@ -74,8 +73,8 @@ const HX_REQUEST: &str = "hx-request";
 /// `Error::into_response`). This layer removes it and renders the presentation
 /// that fits the request:
 ///
-/// * Unauthenticated (`401`) navigation → redirect to `/login` carrying a
-///   `return_to`; for HTMX requests an `HX-Redirect` header is used instead so
+/// * Unauthenticated (`401`) navigation → redirect to `/`, the sign-in page
+///   listing every provider; for HTMX requests an `HX-Redirect` header is used instead so
 ///   the browser performs a full-page navigation.
 /// * Other HTMX requests → a small inline alert fragment, status preserved.
 /// * Everything else → the full `error.html` page, status preserved.
@@ -98,9 +97,11 @@ pub async fn render_errors(
     let status = error.status_code();
     tracing::error!(error = %error, ?status, is_htmx, "request error");
 
-    // Unauthenticated navigation: send them to log in, then back where they were.
+    // Unauthenticated navigation: send them to the sign-in page. There's no
+    // single login route to target, since `/auth/login` is only routed when
+    // a default provider is configured.
     if status == StatusCode::UNAUTHORIZED {
-        let location = "/login";
+        let location = "/";
         if is_htmx {
             let mut response = StatusCode::NO_CONTENT.into_response();
             if let Ok(value) = HeaderValue::from_str(location) {

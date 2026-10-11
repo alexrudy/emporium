@@ -18,7 +18,7 @@ use hyperdriver::{
     server::{ServerProtocolExt, conn::Acceptor},
 };
 
-use otool::{auth::OptionalCurrentUser, build_router, state::AppState};
+use otool::{auth::OptionalCurrentUser, build_router, router_with_chooser, state::AppState};
 use systemd_connector::sockets;
 use tower::ServiceExt;
 use tower_http::{
@@ -55,7 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Config::from_env()?
     };
 
-    let state = AppState::new(config.oath, config.provider, config.sessions);
+    let state = AppState::new(config.oath, config.providers, config.sessions);
 
     let middleware = tower::ServiceBuilder::new()
         .layer(CatchPanicLayer::new())
@@ -78,8 +78,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tracing::info!(?origin, "deriving redirect URIs from the request origin");
         oauth_router = oauth_router.redirect(Arc::new(OriginExtractor::try_from(&origin)?));
     }
-    let router = oauth_router
-        .into_router()
+    let router = router_with_chooser(oauth_router)
         .route(&config.server.verify_route, get(handle_verify))
         .layer(middleware)
         .with_state(state);

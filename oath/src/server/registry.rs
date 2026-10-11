@@ -162,7 +162,16 @@ impl Provider {
         }
     }
 
-    pub(crate) fn root(endpoint: TokenEndpoint) -> Self {
+    /// Register `endpoint` as [`ProviderId::default`], mounted at
+    /// `{prefix}/login` and `{prefix}/callback`.
+    ///
+    /// This is what [`crate::server::OAuth2Router::new`] does with its
+    /// endpoint; use it directly to keep an existing single-provider
+    /// deployment's redirect URI while customizing the provider. The
+    /// endpoint's redirect URI should point at
+    /// [`OAuth2RouterConfig::callback_path`]. A root provider is always
+    /// the default provider.
+    pub fn root(endpoint: TokenEndpoint) -> Self {
         Self {
             mount: Mount::Root,
             ..Self::new(ProviderId::default(), endpoint)

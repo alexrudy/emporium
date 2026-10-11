@@ -6,23 +6,23 @@ use std::convert::Infallible;
 use std::sync::Arc;
 
 use dashmap::DashSet;
-use oath::server::{Identity, IdentityResolver, UserStore, parse_id_token};
+use oath::server::{Identity, IdentityResolver, ProviderId, UserStore, parse_id_token};
 use serde::{Deserialize, Serialize};
 
-/// What ott persists for each user.
-///
-/// `created_at` and `last_login_at` are bookkeeping the demo computes
-/// at callback time; they aren't part of any OIDC spec.
+/// An authenticated user.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct AppUser {
-    /// The user's username.
+    /// The provider the user signed in with.
+    pub provider: ProviderId,
+    /// The user's stable identifier, `{provider}:{sub}`. OIDC `sub`
+    /// claims are only unique per provider, hence the prefix.
     pub username: String,
 }
 
 impl AppUser {
-    /// Creates a new [`AppUser`] with the given username.
-    pub fn new(username: String) -> Self {
-        Self { username }
+    /// Creates a new [`AppUser`].
+    pub fn new(provider: ProviderId, username: String) -> Self {
+        Self { provider, username }
     }
 }
 
@@ -61,22 +61,13 @@ impl UserStore for NoOpUserStore {
     }
 }
 
-/// Default identity resolver: parse the `id_token` and project the
-/// claims into an [`AppUser`].
-///
-/// Note: `created_at` is overwritten on every login because the
-/// resolver doesn't know whether the user already exists. Phase C
-/// polish: read the existing record first and preserve `created_at`.
+/// Default identity resolver: the username is `{provider}:{sub}` from
+/// the `id_token`, so users from different providers can't collide.
 pub fn identity_resolver() -> IdentityResolver<()> {
-    IdentityResolver::new(|tokens| async move {
+    IdentityResolver::with_provider(|provider: ProviderId, tokens| async move {
         let claims = parse_id_token(&tokens)?;
-        let display_name = claims
-            .name
-            .clone()
-            .or_else(|| claims.preferred_username.clone())
-            .unwrap_or_else(|| claims.sub.clone());
         Ok(Identity {
-            username: display_name,
+            username: format!("{provider}:{}", claims.sub),
             data: (),
         })
     })

@@ -5,15 +5,18 @@ use std::{
 
 use config::ConfigError;
 use hyperdriver::client::conn::transport::tcp::TcpTransportConfig;
-use oath::{provider::OAuthProviderConfig, server::OAuth2RouterConfig};
-use otool::config::SessionsConfig;
+use oath::server::OAuth2RouterConfig;
+use otool::config::{ProvidersConfig, SessionsConfig};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default)]
     pub oath: OAuth2RouterConfig,
-    pub provider: OAuthProviderConfig,
+
+    /// `[provider]`, `[providers.<id>]`, and `default_provider`.
+    #[serde(flatten)]
+    pub providers: ProvidersConfig,
 
     #[serde(skip, default)]
     pub tcp: TcpTransportConfig,

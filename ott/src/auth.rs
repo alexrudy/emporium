@@ -31,9 +31,12 @@ impl FromRequestParts<AppState> for CurrentUser {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        let cookie_name = &state.config.cookie_key_cookie_name();
-        let raw = read_signed_cookie(&parts.headers, &state.config.cookie_key, cookie_name)
-            .ok_or_else(redirect_home)?;
+        let raw = read_signed_cookie(
+            &parts.headers,
+            &state.config.cookie_key,
+            &state.session_cookie,
+        )
+        .ok_or_else(redirect_home)?;
         let session_id = SessionId::from_string(raw);
         let data = state
             .sessions
@@ -100,12 +103,4 @@ pub fn read_signed_cookie(headers: &HeaderMap, key: &Key, name: &str) -> Option<
         }
     }
     jar.signed(key).get(name).map(|c| c.value().to_owned())
-}
-
-impl crate::config::Config {
-    /// Name of the session cookie. Matches the default in
-    /// `oath::server::CookieNames`.
-    pub fn cookie_key_cookie_name(&self) -> &'static str {
-        "oath_session"
-    }
 }

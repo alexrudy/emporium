@@ -9,9 +9,9 @@ use std::sync::Arc;
 use axum::Router;
 use axum::routing::get;
 use eyre::Context as _;
-use oath::provider::ProviderEndpoints;
-use oath::server::{InMemorySessionStore, JsonFileUserStore, OAuth2Router};
-use oath::{ProviderMetadata, Scope, ScopeSet, TokenEndpoint};
+use oath::provider::OAuthProviderConfig;
+use oath::server::{InMemorySessionStore, JsonFileUserStore, OAuth2Router, Provider};
+use oath::{Scope, ScopeSet};
 use rust_embed::Embed;
 use storage::LocalDriver;
 use tower_http::trace::TraceLayer;
@@ -26,7 +26,7 @@ mod state;
 mod templates;
 mod user;
 
-use crate::state::AppState;
+use crate::state::{AppState, ProviderLink};
 use crate::user::AppUser;
 
 use self::handlers::render_errors;
@@ -45,8 +45,6 @@ async fn main() -> eyre::Result<()> {
     tracing::info!(
         bind_addr = %config.bind_addr,
         data_dir = %config.data_dir,
-        provider = %config.provider_name,
-        redirect_uri = %config.redirect_uri(),
         "ott starting",
     );
 
@@ -59,29 +57,63 @@ async fn main() -> eyre::Result<()> {
     let driver = LocalDriver::new(config.data_dir.clone());
     let users: JsonFileUserStore<LocalDriver, AppUser> = JsonFileUserStore::new(driver, "users");
 
-    let endpoint = build_endpoint(&config).await?;
-
     let sessions = InMemorySessionStore::default();
 
     // Build the OAuth2 sub-router from oath. It owns clones of the
     // session and user stores; the AppState below holds the same
     // clones so ott's handlers can read them.
-    let oauth_router = OAuth2Router::<_, _, http::Uri>::new(
-        endpoint,
+    let mut oauth = OAuth2Router::<_, _, http::Uri>::multi_provider(
         sessions.clone(),
         users.clone(),
         user::identity_resolver(),
         config.cookie_key.clone(),
     )
     .scopes(ensure_openid(config.scopes.clone()))
-    .secure_cookies(config.secure_cookies)
-    .into_router();
+    .secure_cookies(config.secure_cookies);
+    let router_config = oauth.router_config().clone();
+
+    if let Some(provider) = &config.root_provider {
+        let endpoint =
+            resolve_endpoint("default", provider, &router_config.callback_path()).await?;
+        oauth = oauth.provider(customize(Provider::root(endpoint), provider));
+    }
+    for (id, provider) in &config.providers {
+        let callback_path = router_config.provider_callback_path(id);
+        let endpoint = resolve_endpoint(id.as_str(), provider, &callback_path).await?;
+        oauth = oauth.provider(customize(Provider::new(id.clone(), endpoint), provider));
+    }
+    if let Some(default) = &config.default_provider {
+        oauth = oauth.default_provider(default.clone());
+    }
+
+    let providers: Arc<[ProviderLink]> = oauth
+        .providers()
+        .map(|provider| ProviderLink {
+            name: provider.display_name().to_owned(),
+            login_path: provider.login_path(&router_config),
+            callback_uri: config
+                .public_uri(&provider.callback_path(&router_config))
+                .to_string(),
+        })
+        .collect();
+    for link in providers.iter() {
+        tracing::info!(
+            provider = %link.name,
+            login = %link.login_path,
+            redirect_uri = %link.callback_uri,
+            "provider registered",
+        );
+    }
+
+    let oauth_router = oauth.into_router();
 
     let state = AppState {
         config: Arc::new(config),
         templates: Arc::new(templates::environment()),
         sessions,
         users,
+        providers,
+        session_cookie: router_config.cookies.session.as_str().into(),
     };
     let bind_addr = state.config.bind_addr;
 
@@ -145,39 +177,25 @@ fn config_path_from_args() -> Option<std::path::PathBuf> {
     None
 }
 
-/// Build the configured `TokenEndpoint`, fetching discovery metadata
-/// at startup if [`ProviderEndpoints::Discover`] is in play.
-async fn build_endpoint(config: &config::Config) -> eyre::Result<TokenEndpoint> {
-    let builder = TokenEndpoint::builder()
-        .client_id(config.client_id.clone())
-        .client_secret(config.client_secret.clone())
-        .redirect_uri(config.redirect_uri());
+/// Build a provider's `TokenEndpoint`, fetching discovery metadata at
+/// startup if it's configured with an issuer.
+async fn resolve_endpoint(
+    id: &str,
+    provider: &OAuthProviderConfig,
+    callback_path: &str,
+) -> eyre::Result<oath::TokenEndpoint> {
+    provider
+        .provider(callback_path)
+        .await
+        .wrap_err_with(|| format!("setting up OAuth provider {id}"))
+}
 
-    let builder = match &config.endpoints {
-        ProviderEndpoints::Explicit {
-            auth_uri,
-            token_uri,
-        } => builder
-            .auth_uri(auth_uri.clone())
-            .token_uri(token_uri.clone()),
-        ProviderEndpoints::Discover { issuer } => {
-            let well_known = ProviderMetadata::well_known_url(issuer);
-            tracing::info!(%issuer, %well_known, "fetching OIDC discovery metadata");
-            let metadata = ProviderMetadata::discover(issuer)
-                .await
-                .with_context(|| format!("discovering OAuth2 metadata at {well_known}"))?;
-            tracing::info!(
-                token_endpoint = %metadata.token_endpoint,
-                authorization_endpoint = ?metadata.authorization_endpoint,
-                "discovery succeeded",
-            );
-            builder
-                .from_metadata(&metadata)
-                .wrap_err("applying discovery metadata to TokenEndpoint")?
-        }
-    };
-
-    builder.build().wrap_err("building TokenEndpoint")
+fn customize(provider: Provider, config: &OAuthProviderConfig) -> Provider {
+    let provider = provider.with_display_name(config.provider_name.clone());
+    match &config.scopes {
+        Some(scopes) => provider.with_scopes(ensure_openid(scopes.clone())),
+        None => provider,
+    }
 }
 
 /// We rely on `parse_id_token` to extract identity, which means the

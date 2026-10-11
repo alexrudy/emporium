@@ -4,12 +4,9 @@ use std::time::Duration;
 
 use axum::extract::FromRef;
 use cookie::Key;
-use oath::{
-    provider::OAuthProviderConfig,
-    server::{InMemorySessionStore, OAuth2RouterConfig},
-};
+use oath::server::{InMemorySessionStore, OAuth2RouterConfig};
 
-use crate::config::SessionsConfig;
+use crate::config::{ProvidersConfig, SessionsConfig};
 
 /// The application state, holding configuration and session state.
 #[derive(Debug, Clone)]
@@ -17,8 +14,8 @@ pub struct AppState {
     /// The OAuth2 router configuration.
     pub oauth_router: OAuth2RouterConfig,
 
-    /// The OAuth provider configuration.
-    pub oauth_provider: OAuthProviderConfig,
+    /// The OAuth providers to sign in with.
+    pub providers: ProvidersConfig,
 
     /// The application configuration.
     pub sessions: SessionsConfig,
@@ -31,12 +28,12 @@ impl AppState {
     /// Creates a new `AppState` with the given configuration.
     pub fn new(
         router: OAuth2RouterConfig,
-        provider: OAuthProviderConfig,
+        providers: ProvidersConfig,
         sessions: SessionsConfig,
     ) -> Self {
         Self {
             oauth_router: router,
-            oauth_provider: provider,
+            providers,
             sessions,
             sessions_store: InMemorySessionStore::new(Duration::from_hours(48)),
         }

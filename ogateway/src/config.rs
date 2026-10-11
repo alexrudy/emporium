@@ -4,8 +4,8 @@ use std::{
 };
 
 use config::ConfigError;
-use oath::{provider::OAuthProviderConfig, server::OAuth2RouterConfig};
-use otool::config::SessionsConfig;
+use oath::server::OAuth2RouterConfig;
+use otool::config::{ProvidersConfig, SessionsConfig};
 use serde::{Deserialize, Serialize};
 
 use crate::origin::OriginConfig;
@@ -14,7 +14,10 @@ use crate::origin::OriginConfig;
 pub struct Config {
     #[serde(default)]
     pub oath: OAuth2RouterConfig,
-    pub provider: OAuthProviderConfig,
+
+    /// `[provider]`, `[providers.<id>]`, and `default_provider`.
+    #[serde(flatten)]
+    pub providers: ProvidersConfig,
 
     #[serde(default)]
     pub sessions: SessionsConfig,
@@ -173,6 +176,66 @@ mod tests {
             "#,
         );
         assert!(cfg.origin().is_err());
+    }
+
+    fn full(toml: &str) -> Config {
+        config::Config::builder()
+            .add_source(config::File::from_str(toml, config::FileFormat::Toml))
+            .build()
+            .unwrap()
+            .try_deserialize()
+            .unwrap()
+    }
+
+    #[test]
+    fn legacy_single_provider() {
+        let cfg = full(
+            r#"
+            [provider]
+            client_id = "ogateway"
+            provider_name = "Bastion"
+            [provider.endpoints]
+            issuer = "https://bastion.example.com"
+            "#,
+        );
+        assert_eq!(cfg.providers.provider.unwrap().client_id, "ogateway");
+        assert!(cfg.providers.providers.is_empty());
+    }
+
+    #[test]
+    fn multiple_providers() {
+        let cfg = full(
+            r#"
+            default_provider = "Google"
+
+            [providers.Google]
+            client_id = "g"
+            provider_name = "Google"
+            scopes = "openid email"
+            [providers.Google.endpoints]
+            issuer = "https://accounts.google.com"
+
+            [providers.okta]
+            client_id = "o"
+            provider_name = "Okta"
+            [providers.okta.endpoints]
+            auth_uri = "https://okta.example.com/authorize"
+            token_uri = "https://okta.example.com/token"
+            "#,
+        );
+        let ids: Vec<_> = cfg
+            .providers
+            .providers
+            .keys()
+            .map(|id| id.as_str().to_owned())
+            .collect();
+        assert_eq!(ids, ["Google", "okta"]);
+        assert_eq!(cfg.providers.default_provider.unwrap().as_str(), "Google");
+        assert_eq!(
+            cfg.providers.providers.values().next().unwrap().scopes,
+            Some("openid email".parse().unwrap())
+        );
+        assert!(cfg.providers.provider.is_none());
     }
 
     #[test]

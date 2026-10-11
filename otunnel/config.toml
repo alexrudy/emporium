@@ -27,6 +27,25 @@ external_origin = "http://127.0.0.1:3030"
 auth_uri  = "http://localhost:3000/api/oauth/authorize"
 token_uri = "http://localhost:3000/api/oauth/token"
 
+# Additional providers. `[provider]` above is mounted at /auth/login and
+# /auth/callback; each `[providers.<id>]` at /auth/<id>/login and
+# /auth/<id>/callback (register that redirect URI with the provider).
+# Fields are the same as `[provider]`, plus an optional `scopes` that
+# overrides `[oath] scopes`.
+#
+# [providers.google]
+# client_id = "..."
+# client_secret = "..."
+# provider_name = "Google"
+# external_origin = "http://127.0.0.1:3030"
+# [providers.google.endpoints]
+# issuer = "https://accounts.google.com"
+#
+# Which provider serves /auth/login. `[provider]`, if set, always does;
+# otherwise defaults to the only provider. With several providers and no
+# default, /auth/login shows a "Sign in with ..." page.
+# default_provider = "google"
+
 [server]
 # Where to bind the HTTP listener. Default: "127.0.0.1:3000".
 bind_addr = "127.0.0.1:3030"

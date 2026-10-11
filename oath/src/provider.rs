@@ -4,7 +4,7 @@ use http::{Uri, uri::InvalidUri};
 use secret::Secret;
 use serde::{Deserialize, Serialize};
 
-use crate::{Error, ProviderMetadata, TokenEndpoint};
+use crate::{Error, ProviderMetadata, ScopeSet, TokenEndpoint};
 
 /// Configuration for an OAuth provider endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,6 +23,10 @@ pub struct OAuthProviderConfig {
     pub client_secret: Option<Secret>,
     /// How to discover (or hard-code) the provider's endpoints.
     pub endpoints: ProviderEndpoints,
+    /// Scopes to request from this provider, overriding the router's
+    /// default scopes.
+    #[serde(default)]
+    pub scopes: Option<ScopeSet>,
 }
 
 impl OAuthProviderConfig {
@@ -177,6 +181,7 @@ mod tests {
             endpoints: ProviderEndpoints::Discover {
                 issuer: "https://issuer.example.com".parse().unwrap(),
             },
+            scopes: None,
         }
     }
 

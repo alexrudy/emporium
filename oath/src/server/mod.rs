@@ -254,8 +254,23 @@ where
         self
     }
 
+    /// The router configuration.
+    pub fn router_config(&self) -> &OAuth2RouterConfig {
+        &self.config
+    }
+
+    /// The provider that will serve `{prefix}/login`, if any.
+    ///
+    /// When this is `None`, `{prefix}/login` is left unrouted so the app
+    /// can mount its own provider chooser there. Also `None` if the
+    /// default-provider configuration is invalid (which makes
+    /// [`OAuth2Router::into_router`] panic).
+    pub fn default_login_provider(&self) -> Option<ProviderId> {
+        self.resolve_default_provider().ok().flatten()
+    }
+
     /// Resolve which provider, if any, serves `{prefix}/login`.
-    fn resolve_default_provider(&self) -> Option<ProviderId> {
+    fn resolve_default_provider(&self) -> Result<Option<ProviderId>, String> {
         let root = self
             .providers
             .iter()
@@ -263,26 +278,19 @@ where
             .map(|p| p.id().clone());
 
         match (&self.default_provider, root) {
-            (Some(explicit), Some(root)) => {
-                assert!(
-                    *explicit == root,
-                    "default_provider({explicit}) conflicts with the provider registered via \
-                     OAuth2Router::new, which always serves the default login route"
-                );
-                Some(root)
-            }
-            (Some(explicit), None) => {
-                assert!(
-                    self.get_provider(explicit).is_some(),
-                    "default_provider({explicit}) is not a registered provider"
-                );
-                Some(explicit.clone())
-            }
-            (None, Some(root)) => Some(root),
-            (None, None) => match self.providers.as_slice() {
+            (Some(explicit), Some(root)) if *explicit != root => Err(format!(
+                "default_provider({explicit}) conflicts with the provider registered via \
+                 OAuth2Router::new, which always serves the default login route"
+            )),
+            (Some(explicit), None) if self.get_provider(explicit).is_none() => Err(format!(
+                "default_provider({explicit}) is not a registered provider"
+            )),
+            (Some(explicit), _) => Ok(Some(explicit.clone())),
+            (None, Some(root)) => Ok(Some(root)),
+            (None, None) => Ok(match self.providers.as_slice() {
                 [only] => Some(only.id().clone()),
                 _ => None,
-            },
+            }),
         }
     }
 
@@ -306,7 +314,9 @@ where
             !self.providers.is_empty(),
             "OAuth2Router has no providers registered"
         );
-        let default_provider = self.resolve_default_provider();
+        let default_provider = self
+            .resolve_default_provider()
+            .unwrap_or_else(|message| panic!("{message}"));
 
         let mut router = Router::<AxS>::new();
         for provider in self.providers {
