@@ -8,12 +8,20 @@ use serde::{Serialize, de::DeserializeOwned};
 use storage_driver::{Driver, StorageError, StorageErrorKind};
 
 use crate::server::error::ServerError;
+use crate::server::registry::ProviderId;
 use crate::server::users::UserStore;
 
 /// [`UserStore`] backed by any [`storage_driver::Driver`].
 ///
-/// Reads and writes `{prefix}/{username}.json` in the configured
-/// bucket. The user payload type `T` round-trips through
+/// Reads and writes, in the configured bucket:
+///
+/// - `{prefix}/{username}.json` for [`ProviderId::default`], the provider
+///   registered by [`crate::server::OAuth2Router::new`] (the layout
+///   predates multiple providers, so existing records keep working);
+/// - `{prefix}/{provider}/{username}.json` for every other provider.
+///
+/// Provider ids can't contain `/` or `.`, so the two layouts can't
+/// collide. The user payload type `T` round-trips through
 /// `serde_json::to_vec` / `serde_json::from_slice`.
 ///
 /// Username sanitization is enforced on both [`UserStore::get`] and
@@ -72,10 +80,14 @@ where
         self
     }
 
-    fn path_for(&self, username: &str) -> Result<Utf8PathBuf, ServerError> {
+    fn path_for(&self, provider: &ProviderId, username: &str) -> Result<Utf8PathBuf, ServerError> {
         super::sanitize_username(username)?;
         let file = format!("{username}.json");
-        Ok(self.prefix.join(file))
+        if *provider == ProviderId::default() {
+            Ok(self.prefix.join(file))
+        } else {
+            Ok(self.prefix.join(provider.as_str()).join(file))
+        }
     }
 }
 
@@ -88,8 +100,8 @@ where
     type Data = T;
     type Error = ServerError;
 
-    async fn get(&self, username: &str) -> Result<Option<T>, ServerError> {
-        let path: Utf8PathBuf = self.path_for(username)?;
+    async fn get(&self, provider: &ProviderId, username: &str) -> Result<Option<T>, ServerError> {
+        let path: Utf8PathBuf = self.path_for(provider, username)?;
         let mut buf = Vec::<u8>::new();
         match self.driver.download(&self.bucket, &path, &mut buf).await {
             Ok(()) => {
@@ -107,8 +119,13 @@ where
         }
     }
 
-    async fn put(&self, username: &str, data: &T) -> Result<(), ServerError> {
-        let path: Utf8PathBuf = self.path_for(username)?;
+    async fn put(
+        &self,
+        provider: &ProviderId,
+        username: &str,
+        data: &T,
+    ) -> Result<(), ServerError> {
+        let path: Utf8PathBuf = self.path_for(provider, username)?;
         let bytes = serde_json::to_vec(data).map_err(|e| {
             ServerError::user_store(StorageError::new(
                 self.driver.name(),
@@ -121,7 +138,6 @@ where
             .upload(&self.bucket, &path, &mut reader)
             .await
             .map_err(ServerError::user_store)?;
-        let _ = path; // silence unused if release-build optimizer thinks so
         Ok(())
     }
 }
@@ -188,6 +204,53 @@ mod tests {
                 "expected reject for {bad:?} but got {result:?}",
             );
         }
+    }
+
+    fn store() -> JsonFileUserStore<storage::MemoryStorage, String> {
+        JsonFileUserStore::new(storage::MemoryStorage::with_buckets(&["b"]), "b")
+    }
+
+    #[test]
+    fn default_provider_keeps_flat_layout() {
+        let path = store().path_for(&ProviderId::default(), "alice").unwrap();
+        assert_eq!(path, "users/alice.json");
+    }
+
+    #[test]
+    fn other_providers_get_a_directory() {
+        let path = store()
+            .path_for(&ProviderId::new("google").unwrap(), "alice")
+            .unwrap();
+        assert_eq!(path, "users/google/alice.json");
+    }
+
+    #[tokio::test]
+    async fn same_username_at_different_providers_is_separate() {
+        let store = store();
+        let google = ProviderId::new("google").unwrap();
+        let okta = ProviderId::new("okta").unwrap();
+
+        store
+            .put(&google, "abc", &"from google".into())
+            .await
+            .unwrap();
+        store.put(&okta, "abc", &"from okta".into()).await.unwrap();
+
+        assert_eq!(
+            store.get(&google, "abc").await.unwrap().as_deref(),
+            Some("from google")
+        );
+        assert_eq!(
+            store.get(&okta, "abc").await.unwrap().as_deref(),
+            Some("from okta")
+        );
+        assert!(
+            store
+                .get(&ProviderId::default(), "abc")
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]

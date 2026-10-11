@@ -6,7 +6,6 @@ use std::{
         unix::net::UnixListener,
     },
     path::PathBuf,
-    str::FromStr,
     sync::Arc,
 };
 
@@ -18,8 +17,8 @@ use hyperdriver::{
     Server,
     server::{ServerProtocolExt, conn::Acceptor},
 };
-use oath::server::TrustedHeader;
-use otool::{auth::OptionalCurrentUser, build_router, state::AppState};
+
+use otool::{auth::OptionalCurrentUser, build_router, router_with_chooser, state::AppState};
 use systemd_connector::sockets;
 use tower::ServiceExt;
 use tower_http::{
@@ -28,8 +27,10 @@ use tower_http::{
 };
 
 use self::config::Config;
+use self::origin::OriginExtractor;
 
 mod config;
+mod origin;
 
 #[derive(Debug, Parser)]
 struct Cli {
@@ -54,7 +55,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Config::from_env()?
     };
 
-    let state = AppState::new(config.oath, config.provider, config.sessions);
+    for provider in config.check_origins()? {
+        tracing::warn!(
+            %provider,
+            "external_origin is ignored: redirect URIs come from [server.origin]"
+        );
+    }
+
+    let state = AppState::new(config.oath, config.providers, config.sessions);
 
     let middleware = tower::ServiceBuilder::new()
         .layer(CatchPanicLayer::new())
@@ -73,14 +81,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tracing::info!("Proxy verification at {}", config.server.verify_route);
     let mut oauth_router = build_router(&state).await?;
-    if let Some(trusted_header) = &config.server.trusted_header {
-        let extract = TrustedHeader::from(
-            http::HeaderName::from_str(trusted_header).context("Invalid trusted header")?,
-        );
-        oauth_router = oauth_router.redirect(Arc::new(extract));
+    if let Some(origin) = config.server.origin()? {
+        tracing::info!(?origin, "deriving redirect URIs from the request origin");
+        oauth_router = oauth_router.redirect(Arc::new(OriginExtractor::try_from(&origin)?));
     }
-    let router = oauth_router
-        .into_router()
+    let router = router_with_chooser(oauth_router)
         .route(&config.server.verify_route, get(handle_verify))
         .layer(middleware)
         .with_state(state);
@@ -131,7 +136,7 @@ fn install_tracing() {
 
 async fn handle_verify(OptionalCurrentUser(user): OptionalCurrentUser) -> impl IntoResponse {
     if let Some(user) = user {
-        tracing::debug!("verify: {}", user.username);
+        tracing::debug!(%user, "verify");
         StatusCode::NO_CONTENT.into_response()
     } else {
         StatusCode::FORBIDDEN.into_response()

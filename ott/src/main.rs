@@ -9,9 +9,9 @@ use std::sync::Arc;
 use axum::Router;
 use axum::routing::get;
 use eyre::Context as _;
-use oath::provider::ProviderEndpoints;
-use oath::server::{InMemorySessionStore, JsonFileUserStore, OAuth2Router};
-use oath::{ProviderMetadata, Scope, ScopeSet, TokenEndpoint};
+use oath::provider::OAuthProviderConfig;
+use oath::server::{InMemorySessionStore, JsonFileUserStore, OAuth2Router, Provider, ProviderId};
+use oath::{Scope, ScopeSet};
 use rust_embed::Embed;
 use storage::LocalDriver;
 use tower_http::trace::TraceLayer;
@@ -26,7 +26,7 @@ mod state;
 mod templates;
 mod user;
 
-use crate::state::AppState;
+use crate::state::{AppState, ProviderLink};
 use crate::user::AppUser;
 
 use self::handlers::render_errors;
@@ -45,8 +45,6 @@ async fn main() -> eyre::Result<()> {
     tracing::info!(
         bind_addr = %config.bind_addr,
         data_dir = %config.data_dir,
-        provider = %config.provider_name,
-        redirect_uri = %config.redirect_uri(),
         "ott starting",
     );
 
@@ -59,29 +57,99 @@ async fn main() -> eyre::Result<()> {
     let driver = LocalDriver::new(config.data_dir.clone());
     let users: JsonFileUserStore<LocalDriver, AppUser> = JsonFileUserStore::new(driver, "users");
 
-    let endpoint = build_endpoint(&config).await?;
-
     let sessions = InMemorySessionStore::default();
 
     // Build the OAuth2 sub-router from oath. It owns clones of the
     // session and user stores; the AppState below holds the same
     // clones so ott's handlers can read them.
-    let oauth_router = OAuth2Router::<_, _, http::Uri>::new(
-        endpoint,
+    let mut oauth = OAuth2Router::<_, _, http::Uri>::multi_provider(
         sessions.clone(),
         users.clone(),
         user::identity_resolver(),
         config.cookie_key.clone(),
     )
     .scopes(ensure_openid(config.scopes.clone()))
-    .secure_cookies(config.secure_cookies)
-    .into_router();
+    .secure_cookies(config.secure_cookies);
+    let router_config = oauth.router_config().clone();
+
+    // Set up every provider concurrently. One that fails (e.g. its issuer
+    // is down) is logged and left off the home page rather than stopping
+    // startup; only if all of them fail do we give up.
+    let planned: Vec<(Option<&ProviderId>, &OAuthProviderConfig, String)> =
+        config
+            .root_provider
+            .iter()
+            .map(|provider| (None, provider, router_config.callback_path()))
+            .chain(config.providers.iter().map(|(id, provider)| {
+                (Some(id), provider, router_config.provider_callback_path(id))
+            }))
+            .collect();
+    let results = futures::future::join_all(
+        planned
+            .iter()
+            .map(|(_, provider, path)| resolve_endpoint(provider, path)),
+    )
+    .await;
+
+    let mut failed = Vec::new();
+    for ((id, provider, _), result) in planned.into_iter().zip(results) {
+        let name = id.map_or("default", ProviderId::as_str);
+        match result {
+            Ok(endpoint) => {
+                let registered = match id {
+                    None => Provider::root(endpoint),
+                    Some(id) => Provider::new(id.clone(), endpoint),
+                };
+                oauth = oauth.provider(customize(registered, provider));
+            }
+            Err(error) => {
+                tracing::error!(provider = %name, error = %format!("{error:#}"), "skipping OAuth provider");
+                failed.push(name.to_owned());
+            }
+        }
+    }
+    if oauth.providers().next().is_none() {
+        return Err(eyre::eyre!(
+            "no OAuth provider could be set up (failed: {})",
+            failed.join(", ")
+        ));
+    }
+    if let Some(default) = &config.default_provider {
+        if failed.iter().any(|name| name == default.as_str()) {
+            tracing::warn!(provider = %default, "default provider is unavailable");
+        } else {
+            oauth = oauth.default_provider(default.clone());
+        }
+    }
+
+    let providers: Arc<[ProviderLink]> = oauth
+        .providers()
+        .map(|provider| ProviderLink {
+            name: provider.display_name().to_owned(),
+            login_path: provider.login_path(&router_config),
+            callback_uri: config
+                .public_uri(&provider.callback_path(&router_config))
+                .to_string(),
+        })
+        .collect();
+    for link in providers.iter() {
+        tracing::info!(
+            provider = %link.name,
+            login = %link.login_path,
+            redirect_uri = %link.callback_uri,
+            "provider registered",
+        );
+    }
+
+    let oauth_router = oauth.into_router();
 
     let state = AppState {
         config: Arc::new(config),
         templates: Arc::new(templates::environment()),
         sessions,
         users,
+        providers,
+        router_config: Arc::new(router_config),
     };
     let bind_addr = state.config.bind_addr;
 
@@ -145,39 +213,32 @@ fn config_path_from_args() -> Option<std::path::PathBuf> {
     None
 }
 
-/// Build the configured `TokenEndpoint`, fetching discovery metadata
-/// at startup if [`ProviderEndpoints::Discover`] is in play.
-async fn build_endpoint(config: &config::Config) -> eyre::Result<TokenEndpoint> {
-    let builder = TokenEndpoint::builder()
-        .client_id(config.client_id.clone())
-        .client_secret(config.client_secret.clone())
-        .redirect_uri(config.redirect_uri());
+/// Build a provider's `TokenEndpoint`, fetching discovery metadata at
+/// startup if it's configured with an issuer.
+async fn resolve_endpoint(
+    provider: &OAuthProviderConfig,
+    callback_path: &str,
+) -> eyre::Result<oath::TokenEndpoint> {
+    tokio::time::timeout(PROVIDER_SETUP_TIMEOUT, provider.provider(callback_path))
+        .await
+        .map_err(|_| eyre::eyre!("timed out after {PROVIDER_SETUP_TIMEOUT:?}"))?
+        .wrap_err("resolving provider endpoints")
+}
 
-    let builder = match &config.endpoints {
-        ProviderEndpoints::Explicit {
-            auth_uri,
-            token_uri,
-        } => builder
-            .auth_uri(auth_uri.clone())
-            .token_uri(token_uri.clone()),
-        ProviderEndpoints::Discover { issuer } => {
-            let well_known = ProviderMetadata::well_known_url(issuer);
-            tracing::info!(%issuer, %well_known, "fetching OIDC discovery metadata");
-            let metadata = ProviderMetadata::discover(issuer)
-                .await
-                .with_context(|| format!("discovering OAuth2 metadata at {well_known}"))?;
-            tracing::info!(
-                token_endpoint = %metadata.token_endpoint,
-                authorization_endpoint = ?metadata.authorization_endpoint,
-                "discovery succeeded",
-            );
-            builder
-                .from_metadata(&metadata)
-                .wrap_err("applying discovery metadata to TokenEndpoint")?
-        }
-    };
+/// How long to wait for each provider's endpoints (OIDC discovery).
+const PROVIDER_SETUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
-    builder.build().wrap_err("building TokenEndpoint")
+fn customize(provider: Provider, config: &OAuthProviderConfig) -> Provider {
+    let mut provider = provider
+        .with_display_name(config.provider_name.clone())
+        .with_iss_parameter(config.iss_parameter);
+    if let Some(scopes) = &config.scopes {
+        provider = provider.with_scopes(ensure_openid(scopes.clone()));
+    }
+    if config.skip_issuer_validation {
+        provider = provider.skip_issuer_validation();
+    }
+    provider
 }
 
 /// We rely on `parse_id_token` to extract identity, which means the

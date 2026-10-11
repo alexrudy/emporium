@@ -1,3 +1,7 @@
+# Any setting can be overridden by an OGATEWAY_* environment variable,
+# with `__` between nested keys, e.g. OGATEWAY_PROVIDER__CLIENT_SECRET or
+# OGATEWAY_PROVIDERS__GOOGLE__CLIENT_ID (which configures [providers.google];
+# provider ids must be lowercase).
 
 [oath]
 # OAuth2 scopes to request. `openid` is required for the id_token-based
@@ -17,7 +21,8 @@ provider_name = "Bastion"
 
 # Public origin the redirect URI lives under. Combined with
 # `/auth/callback` to form the URL you register with the provider.
-# Default: "http://127.0.0.1:3000".
+# Required for every provider unless [server.origin] is set (which then
+# applies to all providers, and this is ignored).
 external_origin = "http://localhost:8080"
 
 [provider.endpoints]
@@ -28,10 +33,67 @@ external_origin = "http://localhost:8080"
 auth_uri  = "http://localhost:3000/api/oauth/authorize"
 token_uri = "http://localhost:3000/api/oauth/token"
 
+# Additional providers. `[provider]` above is mounted at /auth/login and
+# /auth/callback; each `[providers.<id>]` at /auth/<id>/login and
+# /auth/<id>/callback (register that redirect URI with the provider).
+# Fields are the same as `[provider]`, plus an optional `scopes` that
+# overrides `[oath] scopes`.
+#
+# Any provider (including `[provider]`) may set
+# `skip_issuer_validation = true` to stop checking ID tokens' `iss`
+# against the discovered issuer (`aud` is still checked). Only use it for
+# providers whose discovery document doesn't state the exact issuer, such
+# as Microsoft Entra's multi-tenant `common` endpoint.
+#
+# `iss_parameter` controls the RFC 9207 `iss` parameter on the login
+# callback: "auto" (default: checked when present, required when
+# discovery advertises support), "required", or "ignored" (opt out, for
+# providers that send a wrong one or advertise support but don't send it).
+#
+# [providers.google]
+# client_id = "..."
+# client_secret = "..."
+# provider_name = "Google"
+# external_origin = "http://localhost:8080"
+# scopes = "openid email"
+# [providers.google.endpoints]
+# issuer = "https://accounts.google.com"
+#
+# Which provider serves /auth/login. `[provider]`, if set, always does;
+# otherwise defaults to the only provider. With several providers and no
+# default, /auth/login shows a "Sign in with ..." page.
+# default_provider = "google"
+
 [server]
 # Where to bind the HTTP listener. Default: "127.0.0.1:3000".
 bind_addr = "127.0.0.1:3030"
 verify_route = "/proxy/verify"
+
+# Optional: one origin source for every provider, replacing each
+# provider's `external_origin`. Each provider's redirect URI becomes
+# `<origin><callback path>`.
+#
+# A single public host:
+#
+# [server.origin]
+# kind = "fixed"
+# origin = "https://gw.example.com"
+#
+# Or derive it from each request, so one gateway can authenticate several
+# hostnames (register the redirect URI with the provider for every host).
+# Only trust these headers when the gateway is reachable exclusively
+# through the proxy.
+#
+# [server.origin]
+# kind = "x-forwarded"      # X-Forwarded-Proto/-Host/-Port (Caddy's default)
+# kind = "forwarded"        # RFC 7239 Forwarded header
+# default_scheme = "https"  # used when no proto is forwarded
+#
+# [server.origin]
+# kind = "trusted-header"
+# header = "X-Gateway-Callback"
+#
+# `trusted_header = "X-Gateway-Callback"` is shorthand for the latter.
 
 [sessions]
 key = "czQckxOIiK4pUqc2z1XsaG+YLSWg+cv7p3PueCMkx3ByjchuoGbh5G+E/NS0IlNeSKUAnNljfaHsJ9fcvpCFhQ=="

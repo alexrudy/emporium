@@ -15,11 +15,42 @@ localhost:8080 {
         forward_auth localhost:3030 {
             uri /proxy/verify
 
+            # {%uri} (Caddy 2.11+) is the query-escaped request URI, so the
+            # user lands back on the page they asked for after signing in.
             @error status 403
             handle_response @error {
-                redir * http://localhost:8080/auth/login
+                redir * http://localhost:8080/auth/login?return_to={%uri}
             }
         }
     	respond "Hello, world!"
+	}
+}
+
+(gateway) {
+	route {
+		reverse_proxy /auth/* unix//run/gateway/gateway.sock {
+			# Public origin of this host, for `[server.origin] kind = "trusted-header"`;
+			# ogateway appends each provider's callback path. (A full callback
+			# URL also works: only the scheme and host are used.)
+			#
+			# Not needed with `kind = "x-forwarded"`: reverse_proxy already
+			# sets X-Forwarded-Proto and X-Forwarded-Host, and preserves Host.
+			header_up X-Gateway-Callback {scheme}://{host}
+			transport http {
+				versions 1.1
+			}
+		}
+
+		forward_auth unix//run/gateway/gateway.sock {
+			uri /proxy/verify
+			transport http {
+				versions 1.1
+			}
+			# {%uri} (Caddy 2.11+) is the query-escaped request URI.
+			@error status 403
+			handle_response @error {
+				redir * {scheme}://{host}/auth/login?return_to={%uri}
+			}
+		}
 	}
 }

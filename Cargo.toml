@@ -44,7 +44,7 @@ http = "1"
 http-body = "1"
 http-body-util = "*"
 hyper = "1"
-hyproxy = "*"
+hyproxy = "~0.13"
 jaws = { version = "1.0.3", features = ["rand", "spki", "der"] }
 indoc = "2"
 minijinja = { version = "2", features = ["loader"] }

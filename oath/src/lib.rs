@@ -35,6 +35,17 @@
 //!    it's past expiry. Concurrent calls collapse to one `/token`
 //!    round-trip.
 //!
+//! [`ProviderMetadata`] fetches OIDC discovery documents, and
+//! [`TokenEndpointBuilder::from_metadata`](endpoint::TokenEndpointBuilder::from_metadata)
+//! configures an endpoint from one. [`provider::OAuthProviderConfig`] is a
+//! serde-friendly provider description for app config files.
+//!
+//! With the `server` feature, the `server` module provides an `axum`
+//! router implementing the browser login flow for one or more providers,
+//! with sessions, a pluggable user store, and the callback checks (state,
+//! PKCE, provider binding, ID token `iss`/`aud`, RFC 9207 `iss`). See its
+//! module docs.
+//!
 //! # Quick start: authorization-code + PKCE
 //!
 //! ```

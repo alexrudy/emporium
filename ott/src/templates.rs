@@ -53,17 +53,32 @@ mod tests {
     }
 
     #[test]
-    fn home_renders_with_provider_name() {
+    fn home_renders_a_button_per_provider() {
         let env = environment();
         let tmpl = env.get_template("home.html").unwrap();
         let body = tmpl
             .render(context! {
-                provider_name => "Google",
-                redirect_uri => "http://127.0.0.1:3000/auth/callback",
+                providers => vec![
+                    context! {
+                        name => "Google",
+                        login_path => "/auth/login",
+                        callback_uri => "http://127.0.0.1:3000/auth/callback",
+                    },
+                    context! {
+                        name => "Okta",
+                        login_path => "/auth/okta/login",
+                        callback_uri => "http://127.0.0.1:3000/auth/okta/callback",
+                    },
+                ],
             })
-            .unwrap();
+            .unwrap()
+            // HTML auto-escaping encodes `/` in values; browsers decode it.
+            .replace("&#x2f;", "/");
         assert!(body.contains("Sign in with Google"));
-        assert!(body.contains("/auth/login"));
+        assert!(body.contains(r#"href="/auth/login""#));
+        assert!(body.contains("Sign in with Okta"));
+        assert!(body.contains(r#"href="/auth/okta/login""#));
+        assert!(body.contains("http://127.0.0.1:3000/auth/okta/callback"));
     }
 
     #[test]
@@ -73,6 +88,7 @@ mod tests {
         let body = tmpl
             .render(context! {
                 user => context! {
+                    provider => "google",
                     sub => "abc123",
                     email => "alice@example.com",
                     email_verified => true,
@@ -84,6 +100,7 @@ mod tests {
             })
             .unwrap();
         assert!(body.contains("Signed in as Alice"));
+        assert!(body.contains("google"));
         assert!(body.contains("alice@example.com"));
         assert!(body.contains("verified"));
         assert!(body.contains("Sign out"));

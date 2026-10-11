@@ -19,11 +19,14 @@ use thiserror::Error;
 
 use crate::TokenSet;
 
+use super::registry::ProviderId;
+
 /// Identity extracted from a [`TokenSet`] during the callback.
 ///
-/// `username` is the stable per-provider identifier the
-/// [`crate::server::UserStore`] keys by (typically the OIDC `sub`
-/// claim). `data` is the app-defined payload to persist.
+/// `username` is the stable per-provider identifier (typically the OIDC
+/// `sub` claim); the [`crate::server::UserStore`] keys records by it
+/// together with the provider. `data` is the app-defined payload to
+/// persist.
 #[derive(Debug, Clone)]
 pub struct Identity<T> {
     /// Stable per-provider user identifier.
@@ -50,6 +53,30 @@ pub enum IdentityError {
     /// The `sub` claim was missing or empty.
     #[error("id_token had no `sub` claim")]
     MissingSubject,
+    /// The `iss` claim doesn't match the provider's issuer.
+    #[error("id_token issuer {actual:?} does not match the provider's issuer {expected:?}")]
+    IssuerMismatch {
+        /// The provider's issuer identifier.
+        expected: String,
+        /// The token's `iss` claim, if any.
+        actual: Option<String>,
+    },
+    /// The `aud` claim doesn't include this client.
+    #[error("id_token audience {actual:?} does not include client {expected:?}")]
+    AudienceMismatch {
+        /// This client's `client_id`.
+        expected: String,
+        /// The token's `aud` claim values.
+        actual: Vec<String>,
+    },
+    /// The `azp` claim names a different client.
+    #[error("id_token authorized party {actual:?} is not client {expected:?}")]
+    AuthorizedPartyMismatch {
+        /// This client's `client_id`.
+        expected: String,
+        /// The token's `azp` claim.
+        actual: String,
+    },
     /// Any other error raised by a custom resolver.
     #[error("{0}")]
     Other(#[from] Box<dyn StdError + Send + Sync + 'static>),
@@ -94,6 +121,87 @@ pub struct IdClaims {
 /// Verifying the signature requires fetching the provider's JWKS and
 /// checking issuer + audience claims.
 pub fn parse_id_token(tokens: &TokenSet) -> Result<IdClaims, IdentityError> {
+    let claims: IdClaims = decode_id_token(tokens)?;
+    if claims.sub.is_empty() {
+        return Err(IdentityError::MissingSubject);
+    }
+    Ok(claims)
+}
+
+/// Check that the `id_token` was issued by the expected provider, for
+/// this client (OIDC Core §3.1.3.7, steps 2–5):
+///
+/// - `iss` must exactly equal `expected_issuer`, when one is given
+///   (e.g. from discovery; see [`crate::TokenEndpoint::issuer`]);
+/// - `aud` must be present and include `client_id`;
+/// - `azp`, if present, must equal `client_id`.
+///
+/// With several providers configured, this catches tokens minted by
+/// one provider (or for another client) arriving through another's
+/// flow.
+///
+/// **Signature, `exp`, and `nonce` are not checked.** Like
+/// [`parse_id_token`], this relies on the token having come straight
+/// from the provider's token endpoint over TLS.
+pub fn validate_id_token(
+    tokens: &TokenSet,
+    client_id: &str,
+    expected_issuer: Option<&str>,
+) -> Result<(), IdentityError> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Audience {
+        One(String),
+        Many(Vec<String>),
+    }
+
+    #[derive(Deserialize)]
+    struct BindingClaims {
+        #[serde(default)]
+        iss: Option<String>,
+        #[serde(default)]
+        aud: Option<Audience>,
+        #[serde(default)]
+        azp: Option<String>,
+    }
+
+    let claims: BindingClaims = decode_id_token(tokens)?;
+
+    if let Some(expected) = expected_issuer
+        && claims.iss.as_deref() != Some(expected)
+    {
+        return Err(IdentityError::IssuerMismatch {
+            expected: expected.to_owned(),
+            actual: claims.iss,
+        });
+    }
+
+    let audience = match claims.aud {
+        Some(Audience::One(aud)) => vec![aud],
+        Some(Audience::Many(aud)) => aud,
+        None => Vec::new(),
+    };
+    if !audience.iter().any(|aud| aud == client_id) {
+        return Err(IdentityError::AudienceMismatch {
+            expected: client_id.to_owned(),
+            actual: audience,
+        });
+    }
+
+    if let Some(azp) = claims.azp
+        && azp != client_id
+    {
+        return Err(IdentityError::AuthorizedPartyMismatch {
+            expected: client_id.to_owned(),
+            actual: azp,
+        });
+    }
+
+    Ok(())
+}
+
+/// Base64url-decode the `id_token` payload and deserialize it.
+fn decode_id_token<T: serde::de::DeserializeOwned>(tokens: &TokenSet) -> Result<T, IdentityError> {
     let id_token = tokens
         .id_token
         .as_deref()
@@ -110,15 +218,11 @@ pub fn parse_id_token(tokens: &TokenSet) -> Result<IdClaims, IdentityError> {
     let decoded = URL_SAFE_NO_PAD
         .decode(payload.as_bytes())
         .map_err(IdentityError::DecodeFailed)?;
-    let claims: IdClaims = serde_json::from_slice(&decoded).map_err(IdentityError::InvalidJson)?;
-    if claims.sub.is_empty() {
-        return Err(IdentityError::MissingSubject);
-    }
-    Ok(claims)
+    serde_json::from_slice(&decoded).map_err(IdentityError::InvalidJson)
 }
 
 type BoxedFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
-type ResolverFn<T> = dyn Fn(TokenSet) -> BoxedFuture<'static, Result<Identity<T>, IdentityError>>
+type ResolverFn<T> = dyn Fn(ProviderId, TokenSet) -> BoxedFuture<'static, Result<Identity<T>, IdentityError>>
     + Send
     + Sync
     + 'static;
@@ -126,7 +230,9 @@ type ResolverFn<T> = dyn Fn(TokenSet) -> BoxedFuture<'static, Result<Identity<T>
 /// Type-erased async closure that turns a [`TokenSet`] into an
 /// [`Identity<T>`].
 ///
-/// Construct via [`IdentityResolver::new`] with an async closure.
+/// Construct via [`IdentityResolver::new`] with an async closure, or
+/// [`IdentityResolver::with_provider`] when the resolver needs to know
+/// which provider issued the tokens.
 pub struct IdentityResolver<T> {
     inner: Arc<ResolverFn<T>>,
 }
@@ -173,13 +279,48 @@ where
         Fut: Future<Output = Result<Identity<T>, IdentityError>> + Send + 'static,
     {
         Self {
-            inner: Arc::new(move |tokens| Box::pin(f(tokens))),
+            inner: Arc::new(move |_provider, tokens| Box::pin(f(tokens))),
         }
     }
 
-    /// Invoke the resolver.
-    pub async fn resolve(&self, tokens: TokenSet) -> Result<Identity<T>, IdentityError> {
-        (self.inner)(tokens).await
+    /// Wrap an async closure that also receives the [`ProviderId`] the
+    /// tokens came from, e.g. to read provider-specific claims or record
+    /// the provider in the user's data.
+    ///
+    /// There's no need to namespace `username` by provider: the
+    /// [`crate::server::UserStore`] and the session both key users by
+    /// `(provider, username)`.
+    ///
+    /// ```
+    /// # use oath::server::{parse_id_token, Identity, IdentityResolver, ProviderId};
+    /// # use oath::TokenSet;
+    /// struct AppUser { provider: ProviderId, email: Option<String> }
+    /// let resolver = IdentityResolver::with_provider(|provider: ProviderId, tokens: TokenSet| async move {
+    ///     let claims = parse_id_token(&tokens)?;
+    ///     Ok(Identity {
+    ///         username: claims.sub,
+    ///         data: AppUser { provider, email: claims.email },
+    ///     })
+    /// });
+    /// # let _ = resolver;
+    /// ```
+    pub fn with_provider<F, Fut>(f: F) -> Self
+    where
+        F: Fn(ProviderId, TokenSet) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<Identity<T>, IdentityError>> + Send + 'static,
+    {
+        Self {
+            inner: Arc::new(move |provider, tokens| Box::pin(f(provider, tokens))),
+        }
+    }
+
+    /// Invoke the resolver for tokens issued by `provider`.
+    pub async fn resolve(
+        &self,
+        provider: &ProviderId,
+        tokens: TokenSet,
+    ) -> Result<Identity<T>, IdentityError> {
+        (self.inner)(provider.clone(), tokens).await
     }
 }
 
@@ -240,6 +381,67 @@ mod tests {
         assert!(matches!(
             parse_id_token(&tokens),
             Err(IdentityError::InvalidJson(_))
+        ));
+    }
+
+    fn validate(payload: &str, issuer: Option<&str>) -> Result<(), IdentityError> {
+        validate_id_token(&make_tokens(Some(&jwt(payload))), "client", issuer)
+    }
+
+    #[test]
+    fn validate_accepts_matching_claims() {
+        let iss = Some("https://idp.example.com");
+        validate(r#"{"iss":"https://idp.example.com","aud":"client"}"#, iss).unwrap();
+        validate(
+            r#"{"iss":"https://idp.example.com","aud":["other","client"],"azp":"client"}"#,
+            iss,
+        )
+        .unwrap();
+        // Without an expected issuer, `iss` isn't checked.
+        validate(r#"{"iss":"https://anything","aud":"client"}"#, None).unwrap();
+    }
+
+    #[test]
+    fn validate_rejects_wrong_issuer() {
+        let iss = Some("https://idp.example.com");
+        for payload in [
+            r#"{"iss":"https://evil.example.com","aud":"client"}"#,
+            r#"{"iss":"https://idp.example.com/","aud":"client"}"#,
+            r#"{"aud":"client"}"#,
+        ] {
+            assert!(
+                matches!(
+                    validate(payload, iss),
+                    Err(IdentityError::IssuerMismatch { .. })
+                ),
+                "{payload}"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_rejects_wrong_audience() {
+        for payload in [
+            r#"{"aud":"other"}"#,
+            r#"{"aud":["other","another"]}"#,
+            r#"{"aud":[]}"#,
+            r#"{}"#,
+        ] {
+            assert!(
+                matches!(
+                    validate(payload, None),
+                    Err(IdentityError::AudienceMismatch { .. })
+                ),
+                "{payload}"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_rejects_wrong_authorized_party() {
+        assert!(matches!(
+            validate(r#"{"aud":["client","other"],"azp":"other"}"#, None),
+            Err(IdentityError::AuthorizedPartyMismatch { .. })
         ));
     }
 

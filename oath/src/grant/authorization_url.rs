@@ -117,9 +117,10 @@ impl<'a> AuthorizationUrl<'a> {
             params.push(("scope", self.scopes.to_string()));
         }
 
-        if let Some(redirect) = self.redirect {
-            params.push(("redirect_uri", redirect.to_string()));
-        } else if let Some(redirect) = self.endpoint.redirect_uri() {
+        let redirect_uri = self
+            .redirect
+            .or_else(|| self.endpoint.redirect_uri().cloned());
+        if let Some(redirect) = &redirect_uri {
             params.push(("redirect_uri", redirect.to_string()));
         }
         params.push(("state", state.revealed().to_owned()));
@@ -133,7 +134,14 @@ impl<'a> AuthorizationUrl<'a> {
             .append_query(&params)
             .expect("authorization URL must build from validated components");
 
-        Ok((url, PendingAuthorization { state, verifier }))
+        Ok((
+            url,
+            PendingAuthorization {
+                state,
+                verifier,
+                redirect_uri,
+            },
+        ))
     }
 }
 
@@ -289,5 +297,41 @@ mod tests {
         let parsed: PendingAuthorization = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.state.revealed(), pending.state.revealed());
         assert_eq!(parsed.verifier.revealed(), pending.verifier.revealed());
+        assert_eq!(parsed.redirect_uri, pending.redirect_uri);
+    }
+
+    #[test]
+    fn pending_records_redirect_override() {
+        let endpoint = endpoint();
+        let override_uri: Uri = "https://app1.example.com/auth/cb".parse().unwrap();
+        let (url, pending) = AuthorizationUrl::new(&endpoint)
+            .with_redirect(override_uri.clone())
+            .begin()
+            .unwrap();
+        assert_eq!(
+            query_map(&url).get("redirect_uri").unwrap(),
+            "https://app1.example.com/auth/cb"
+        );
+        assert_eq!(pending.redirect_uri, Some(override_uri));
+    }
+
+    #[test]
+    fn pending_records_endpoint_redirect_by_default() {
+        let endpoint = endpoint();
+        let (_url, pending) = AuthorizationUrl::new(&endpoint).begin().unwrap();
+        assert_eq!(
+            pending.redirect_uri.map(|u| u.to_string()).as_deref(),
+            Some("https://app.example.com/cb")
+        );
+    }
+
+    #[test]
+    fn pending_without_redirect_field_deserializes() {
+        let endpoint = endpoint();
+        let (_url, pending) = AuthorizationUrl::new(&endpoint).begin().unwrap();
+        let mut json: serde_json::Value = serde_json::to_value(&pending).unwrap();
+        json.as_object_mut().unwrap().remove("redirect_uri");
+        let parsed: PendingAuthorization = serde_json::from_value(json).unwrap();
+        assert!(parsed.redirect_uri.is_none());
     }
 }

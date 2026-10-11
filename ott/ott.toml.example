@@ -15,7 +15,28 @@
 # (set them after `OTT_CONFIG`) — env-var mode is documented in
 # `.env.example`.
 
+# Providers come in two forms, which can be combined:
+#
+# - a single provider configured directly in [oauth], served at
+#   /auth/login with redirect URI ${external_origin}/auth/callback;
+# - named providers in [providers.<id>], served at /auth/<id>/login with
+#   redirect URI ${external_origin}/auth/<id>/callback.
+#
+# The home page shows a "Sign in with ..." button for each, along with
+# the redirect URI to register with that provider.
+
 [oauth]
+# OAuth2 scopes to request from every provider that doesn't set its own.
+# `openid` is required for the id_token-based identity resolver; ott
+# adds it defensively if you forget. Default: "openid email profile".
+scopes = "openid email profile"
+
+# Which named provider serves /auth/login. Only valid without the
+# single [oauth] provider (which always does). Optional.
+# default_provider = "google"
+
+# The single provider. Omit these fields if you only use [providers.*].
+
 # Required: client credentials issued by the provider.
 client_id = "your-client-id-here"
 client_secret = "your-client-secret-here"
@@ -23,17 +44,39 @@ client_secret = "your-client-secret-here"
 # Display name shown on the "Sign in with X" button. Default: "OAuth".
 provider_name = "Google"
 
-# OAuth2 scopes to request. `openid` is required for the id_token-based
-# identity resolver; ott adds it defensively if you forget. Default:
-# "openid email profile".
-scopes = "openid email profile"
-
 # Provider endpoints: set EITHER `issuer` (discovery — recommended for
 # OIDC providers; ott fetches <issuer>/.well-known/openid-configuration
 # at startup) OR both `auth_uri` and `token_uri` explicitly.
 issuer = "https://accounts.google.com"
 # auth_uri  = "https://accounts.google.com/o/oauth2/v2/auth"
 # token_uri = "https://oauth2.googleapis.com/token"
+
+# ID tokens' `iss` claim must exactly match the issuer from discovery.
+# Set this to skip that check (`aud` is still checked) for providers whose
+# discovery document doesn't state the exact issuer, such as Microsoft
+# Entra's multi-tenant `common` endpoint. Default: false.
+# skip_issuer_validation = true
+
+# RFC 9207 `iss` parameter on the login callback:
+#   "auto"     — checked when present; required when discovery advertises
+#                support (default)
+#   "required" — always required (needs a discovered issuer)
+#   "ignored"  — opt out, for providers that send a wrong `iss` or
+#                advertise support but don't send it
+# iss_parameter = "auto"
+
+# Named providers. Same fields as the single provider above (including
+# `skip_issuer_validation` and `iss_parameter`), plus an optional
+# `scopes` overriding [oauth] scopes. `provider_name` defaults
+# to the id. Ids may contain lowercase ASCII letters, digits, `-`, and
+# `_`.
+#
+# [providers.okta]
+# client_id = "your-okta-client-id"
+# client_secret = "your-okta-client-secret"
+# provider_name = "Okta"
+# scopes = "openid email groups"
+# issuer = "https://<your-org>.okta.com/oauth2/default"
 
 [cookies]
 # Required: cookie signing key. Base64-encoded, at least 64 bytes.
@@ -49,12 +92,13 @@ secure = false
 # Where to bind the HTTP listener. Default: "127.0.0.1:3000".
 bind_addr = "127.0.0.1:3000"
 
-# Public origin the redirect URI lives under. Combined with
-# `/auth/callback` to form the URL you register with the provider.
+# Public origin the redirect URIs live under. Combined with each
+# provider's callback path to form the URL you register with it.
 # Default: "http://127.0.0.1:3000".
 external_origin = "http://127.0.0.1:3000"
 
-# Where the JsonFileUserStore writes <sub>.json records.
+# Where the JsonFileUserStore writes user records: users/<sub>.json for
+# the single [oauth] provider, users/<provider>/<sub>.json otherwise.
 # Default: "./data".
 data_dir = "./data"
 
@@ -70,6 +114,8 @@ data_dir = "./data"
 # Keycloak (local docker, default realm "master")
 #   issuer = "http://127.0.0.1:8080/realms/master"
 #
-# For every provider, set the Authorized Redirect URI to
-#     ${external_origin}/auth/callback
+# Set each provider's Authorized Redirect URI to
+#     ${external_origin}/auth/callback        for the single [oauth] provider
+#     ${external_origin}/auth/<id>/callback   for [providers.<id>]
 # — the exact match matters; trailing-slash mismatches will be rejected.
+# The home page lists the exact URI for each configured provider.

@@ -10,21 +10,24 @@ use axum::response::{IntoResponse, Redirect};
 use cookie::{Cookie, CookieJar, Key, SameSite};
 use serde::Deserialize;
 
-use crate::{AuthorizationUrl, TokenEndpoint, TokenErrorCode};
+use crate::{AuthorizationUrl, TokenErrorCode};
 
 use super::config::OAuth2RouterConfig;
 use super::error::ServerError;
-use super::identity::{Identity, IdentityResolver};
+use super::identity::{Identity, IdentityResolver, validate_id_token};
 use super::redirect::ExtractRedirect;
+use super::registry::Provider;
 use super::session::{SessionData, SessionId, SessionStore};
 use super::users::UserStore;
 
 /// Shared state threaded through the router via `Extension`.
+///
+/// The provider a login/callback route belongs to is not part of this
+/// state: each of those routes carries its own `Extension<Arc<Provider>>`.
 pub(crate) struct RouterState<S, U>
 where
     U: UserStore,
 {
-    pub endpoint: TokenEndpoint,
     pub config: OAuth2RouterConfig,
     pub sessions: Arc<S>,
     pub users: Arc<U>,
@@ -38,7 +41,6 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RouterState")
-            .field("endpoint", &self.endpoint)
             .field("config", &self.config)
             .field("identity", &self.identity)
             .finish_non_exhaustive()
@@ -48,7 +50,7 @@ where
 #[derive(Debug, Deserialize)]
 pub(crate) struct LoginParams {
     /// Where to redirect after a successful callback. Only honored if
-    /// it's a same-origin relative path (starts with `/`, no `//`).
+    /// it passes [`OAuth2RouterConfig::sanitize_return_to`].
     #[serde(default)]
     return_to: Option<String>,
 }
@@ -63,11 +65,16 @@ pub(crate) struct CallbackParams {
     error: Option<String>,
     #[serde(default)]
     error_description: Option<String>,
+    /// RFC 9207 issuer identifier.
+    #[serde(default)]
+    iss: Option<String>,
 }
 
-/// `GET {prefix}/login`
+/// `GET {prefix}/{provider}/login` (or `{prefix}/login` for the default
+/// provider).
 pub(crate) async fn login<S, U, C>(
     Extension(state): Extension<Arc<RouterState<S, U>>>,
+    Extension(provider): Extension<Arc<Provider>>,
     Extension(redirect): Extension<Option<Arc<C>>>,
     Query(params): Query<LoginParams>,
     mut parts: http::request::Parts,
@@ -77,19 +84,33 @@ where
     U: UserStore,
     C: ExtractRedirect + Send + Sync + 'static,
 {
-    let mut auth_uri = AuthorizationUrl::new(&state.endpoint).scopes(state.config.scopes.clone());
+    let mut auth_uri =
+        AuthorizationUrl::new(provider.endpoint()).scopes(provider.effective_scopes(&state.config));
 
-    if let Some(callback) = &redirect {
-        let redirect = callback.from_request_parts(&mut parts).await?;
-        auth_uri = auth_uri.with_redirect(redirect);
+    // With an origin extractor, the redirect URI is always this
+    // provider's callback route on the request's public host. Otherwise
+    // the endpoint's configured redirect URI is used. Either way,
+    // `PendingAuthorization` records the value sent so the token
+    // exchange can repeat it.
+    if let Some(extract) = &redirect {
+        let origin = extract.from_request_parts(&mut parts).await?;
+        let callback =
+            super::redirect::callback_uri(&origin, &provider.callback_path(&state.config))?;
+        auth_uri = auth_uri.with_redirect(callback);
     }
 
     let (url, pending) = auth_uri.begin()?;
 
-    let return_to = params.return_to.and_then(|s| sanitize_return_to(&s));
+    let return_to = params
+        .return_to
+        .and_then(|value| state.config.sanitize_return_to(&value));
     let session_id = state
         .sessions
-        .create(SessionData::Pending { pending, return_to })
+        .create(SessionData::Pending {
+            provider: provider.id().clone(),
+            pending,
+            return_to,
+        })
         .await
         .map_err(ServerError::session_store)?;
 
@@ -102,16 +123,22 @@ where
         state.config.same_site,
     );
 
-    tracing::debug!("redirecting to oauth provider {url}", url = url.to_string());
+    tracing::debug!(
+        provider = %provider.id(),
+        "redirecting to oauth provider {url}",
+        url = url.to_string()
+    );
     let mut headers = HeaderMap::new();
     headers.append(SET_COOKIE, cookie);
 
     Ok((headers, Redirect::to(&url.to_string())).into_response())
 }
 
-/// `GET {prefix}/callback`
+/// `GET {prefix}/{provider}/callback` (or `{prefix}/callback` for a
+/// provider registered via [`super::OAuth2Router::new`]).
 pub(crate) async fn callback<S, U>(
     Extension(state): Extension<Arc<RouterState<S, U>>>,
+    Extension(provider): Extension<Arc<Provider>>,
     Query(params): Query<CallbackParams>,
     headers: HeaderMap,
 ) -> Result<axum::response::Response, ServerError>
@@ -119,6 +146,10 @@ where
     S: SessionStore,
     U: UserStore,
 {
+    // RFC 9207 §2.4: check `iss` before acting on the response at all,
+    // including error responses.
+    provider.check_iss_parameter(params.iss.as_deref())?;
+
     if let Some(code) = params.error {
         return Err(ServerError::ProviderError {
             code,
@@ -144,8 +175,12 @@ where
         .map_err(ServerError::session_store)?
         .ok_or(ServerError::PreauthMissing)?;
 
-    let (pending, return_to) = match preauth {
-        SessionData::Pending { pending, return_to } => (pending, return_to),
+    let (pending_provider, pending, return_to) = match preauth {
+        SessionData::Pending {
+            provider,
+            pending,
+            return_to,
+        } => (provider, pending, return_to),
         SessionData::Authenticated { .. } => return Err(ServerError::PreauthMissing),
     };
 
@@ -157,13 +192,35 @@ where
         .await
         .map_err(ServerError::session_store)?;
 
+    // Only exchange the code with the provider the flow was started
+    // against, and only when it arrives on that provider's callback
+    // route. This is the IdP mix-up defense: a code from provider A must
+    // never be sent to provider B's token endpoint.
+    if &pending_provider != provider.id() {
+        return Err(ServerError::ProviderMismatch {
+            expected: pending_provider,
+            actual: provider.id().clone(),
+        });
+    }
+
     let token_set = pending
-        .complete(&state.endpoint, &auth_state, auth_code)
+        .complete(provider.endpoint(), &auth_state, auth_code)
         .await?;
+
+    // OIDC providers return an id_token; make sure it's from this
+    // provider and for this client before the app's resolver sees it.
+    if token_set.id_token.is_some() {
+        validate_id_token(
+            &token_set,
+            provider.endpoint().client_id(),
+            provider.expected_issuer(),
+        )
+        .map_err(ServerError::InvalidIdToken)?;
+    }
 
     let Identity { username, data } = state
         .identity
-        .resolve(token_set)
+        .resolve(provider.id(), token_set)
         .await
         .map_err(ServerError::identity)?;
 
@@ -171,13 +228,14 @@ where
 
     state
         .users
-        .put(&username, &data)
+        .put(provider.id(), &username, &data)
         .await
         .map_err(ServerError::user_store)?;
 
     let session_id = state
         .sessions
         .create(SessionData::Authenticated {
+            provider: provider.id().clone(),
             username: username.clone(),
         })
         .await
@@ -236,14 +294,6 @@ where
     response_headers.append(SET_COOKIE, session_clear);
 
     Ok((response_headers, Redirect::to(&state.config.logout_landing)).into_response())
-}
-
-fn sanitize_return_to(value: &str) -> Option<String> {
-    if value.starts_with('/') && !value.starts_with("//") {
-        Some(value.to_owned())
-    } else {
-        None
-    }
 }
 
 fn build_signed_cookie(
@@ -307,14 +357,6 @@ pub fn is_user_denied(code: &TokenErrorCode) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn return_to_must_be_relative() {
-        assert_eq!(sanitize_return_to("/profile").as_deref(), Some("/profile"),);
-        assert!(sanitize_return_to("https://evil.example.com").is_none());
-        assert!(sanitize_return_to("//evil.example.com/path").is_none());
-        assert!(sanitize_return_to("relative-path").is_none());
-    }
 
     #[test]
     fn signed_cookie_roundtrip() {

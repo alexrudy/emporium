@@ -405,22 +405,6 @@ dependencies = [
 
 [[package]]
 name = "chateau"
-version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd24cc924dcb787f1ac5906958be52f19f5fed57fcc2a6f39d0b9bb9179bd5bc"
-dependencies = [
- "futures",
- "parking_lot",
- "pin-project",
- "socket2",
- "thiserror 2.0.21",
- "tokio",
- "tower",
- "tracing",
-]
-
-[[package]]
-name = "chateau"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "769e6b3ace61a482125c0957f4102e455cee6874bfc62bf1a58019c65903f970"
@@ -1328,7 +1312,7 @@ checksum = "e381ceb8c74fb7d0244b1b613d714426091b4fd9af613010ed8d5c69e8cbe160"
 dependencies = [
  "bytes",
  "camino",
- "chateau 0.4.2",
+ "chateau",
  "futures-core",
  "futures-util",
  "http",
@@ -1348,15 +1332,13 @@ dependencies = [
 
 [[package]]
 name = "hyproxy"
-version = "0.12.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a73405ea066858bab0c3336afd340ac6fa37cdbae4bf5b9f175364b6142fc15"
+checksum = "4176aff0f2a09b10b95add78c678c2717dbf64d8474fee18b6598a7f78c00d16"
 dependencies = [
  "bytes",
- "chateau 0.3.4",
  "http",
  "hyper",
- "hyperdriver",
  "nom",
  "pin-project-lite",
  "thiserror 2.0.21",
@@ -1821,6 +1803,7 @@ dependencies = [
  "http",
  "http-body-util",
  "hyperdriver",
+ "hyproxy",
  "rand 0.10.3",
  "secret",
  "serde",
@@ -1937,10 +1920,16 @@ dependencies = [
  "cookie",
  "dashmap",
  "data-encoding",
+ "futures",
  "http",
  "oath",
  "secret",
  "serde",
+ "serde_json",
+ "serde_urlencoded",
+ "thiserror 2.0.21",
+ "tokio",
+ "tower",
  "tracing",
 ]
 
@@ -1956,6 +1945,7 @@ dependencies = [
  "cookie",
  "data-encoding",
  "eyre",
+ "futures",
  "http",
  "mime_guess",
  "minijinja",
@@ -1989,7 +1979,6 @@ dependencies = [
  "oath",
  "otool",
  "serde",
- "serde_json",
  "tokio",
  "tower",
  "tower-http",

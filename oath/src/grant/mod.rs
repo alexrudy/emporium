@@ -47,7 +47,8 @@ pub enum TokenRequest {
 impl TokenRequest {
     /// Build the grant-specific form fields. `endpoint_redirect` is the
     /// `redirect_uri` configured on the token endpoint; the
-    /// `authorization_code` grant uses it when present.
+    /// `authorization_code` grant uses it when present, unless the
+    /// request carries its own override.
     pub(crate) fn build_fields(
         self,
         endpoint_redirect: Option<&Uri>,
@@ -55,8 +56,9 @@ impl TokenRequest {
         match self {
             Self::ClientCredentials(r) => r.into_fields(),
             Self::AuthorizationCode(r) => {
+                let redirect = r.redirect_uri.clone();
                 let mut fields = r.into_fields();
-                if let Some(uri) = endpoint_redirect {
+                if let Some(uri) = redirect.as_ref().or(endpoint_redirect) {
                     fields.push(("redirect_uri", uri.to_string()));
                 }
                 fields
@@ -138,6 +140,21 @@ mod tests {
              &code=the-code\
              &code_verifier=dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk\
              &redirect_uri=https%3A%2F%2Fapp.example.com%2Fcb"
+        );
+    }
+
+    #[test]
+    fn authorization_code_redirect_override_wins() {
+        let endpoint_redirect: Uri = "https://endpoint.example.com/cb".parse().unwrap();
+        let body = fields_for(
+            AuthorizationCodeRequest::new("c")
+                .redirect_uri("https://app1.example.com/auth/cb".parse().unwrap()),
+            Some(&endpoint_redirect),
+        );
+        assert_eq!(
+            body,
+            "grant_type=authorization_code&code=c\
+             &redirect_uri=https%3A%2F%2Fapp1.example.com%2Fauth%2Fcb"
         );
     }
 

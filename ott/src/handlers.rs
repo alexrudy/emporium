@@ -2,36 +2,61 @@
 
 use std::sync::Arc;
 
-use axum::extract::{Request, State};
+use axum::extract::{Query, Request, State};
 use axum::middleware::Next;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use http::{HeaderName, HeaderValue, StatusCode};
 use minijinja::context;
 use oath::server::ServerError;
+use serde::Deserialize;
 
 use crate::auth::{CurrentUser, OptionalCurrentUser};
-use crate::state::AppState;
+use crate::state::{AppState, ProviderLink};
 
-/// `GET /` — anonymous landing.
+#[derive(Debug, Deserialize)]
+pub struct HomeParams {
+    /// Where to go after signing in.
+    #[serde(default)]
+    return_to: Option<String>,
+}
+
+/// `GET /` — anonymous landing and provider chooser.
 ///
 /// If the request carries a valid session cookie + user record, we
-/// redirect to `/profile`; otherwise render the home template.
+/// redirect to `return_to` (if valid) or `/profile`; otherwise render
+/// the home template, carrying `return_to` into each provider's login
+/// link.
 pub async fn home(
     State(state): State<AppState>,
     OptionalCurrentUser(user): OptionalCurrentUser,
+    Query(params): Query<HomeParams>,
 ) -> axum::response::Response {
+    let return_to = params
+        .return_to
+        .and_then(|value| state.router_config.sanitize_return_to(&value));
+
     if user.is_some() {
-        return Redirect::to("/profile").into_response();
+        let dest = return_to.as_deref().unwrap_or("/profile");
+        return Redirect::to(dest).into_response();
     }
+
+    let providers: Vec<ProviderLink> = state
+        .providers
+        .iter()
+        .map(|link| ProviderLink {
+            login_path: state
+                .router_config
+                .with_return_to(&link.login_path, return_to.as_deref()),
+            ..link.clone()
+        })
+        .collect();
+
     let tmpl = state
         .templates
         .get_template("home.html")
         .expect("home.html template was registered at startup");
     let body = tmpl
-        .render(context! {
-            provider_name => &state.config.provider_name,
-            redirect_uri => state.config.redirect_uri().to_string(),
-        })
+        .render(context! { providers => providers })
         .expect("home.html renders cleanly with built-in context");
     Html(body).into_response()
 }
@@ -67,6 +92,9 @@ pub async fn health() -> &'static str {
 /// Header HTMX sets on every request it issues.
 const HX_REQUEST: &str = "hx-request";
 
+/// Header HTMX sets to the browser's current URL.
+const HX_CURRENT_URL: &str = "hx-current-url";
+
 /// Top-level response-rendering middleware.
 ///
 /// Handlers and extractors return [`ServerError`], whose `IntoResponse` stashes it in
@@ -74,8 +102,10 @@ const HX_REQUEST: &str = "hx-request";
 /// `Error::into_response`). This layer removes it and renders the presentation
 /// that fits the request:
 ///
-/// * Unauthenticated (`401`) navigation → redirect to `/login` carrying a
-///   `return_to`; for HTMX requests an `HX-Redirect` header is used instead so
+/// * Unauthenticated (`401`) navigation → redirect to `/`, the sign-in page
+///   listing every provider, with a `return_to` pointing back at the page
+///   (for HTMX requests, the page in `HX-Current-URL`, not the fragment
+///   endpoint); for HTMX requests an `HX-Redirect` header is used instead so
 ///   the browser performs a full-page navigation.
 /// * Other HTMX requests → a small inline alert fragment, status preserved.
 /// * Everything else → the full `error.html` page, status preserved.
@@ -88,6 +118,16 @@ pub async fn render_errors(
     next: Next,
 ) -> Response {
     let is_htmx = request.headers().contains_key(HX_REQUEST);
+    let return_to = if is_htmx {
+        request
+            .headers()
+            .get(HX_CURRENT_URL)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse::<http::Uri>().ok())
+            .and_then(|uri| uri.path_and_query().map(|p| p.to_string()))
+    } else {
+        request.uri().path_and_query().map(|p| p.to_string())
+    };
 
     let mut response = next.run(request).await;
 
@@ -98,9 +138,14 @@ pub async fn render_errors(
     let status = error.status_code();
     tracing::error!(error = %error, ?status, is_htmx, "request error");
 
-    // Unauthenticated navigation: send them to log in, then back where they were.
+    // Unauthenticated navigation: send them to the sign-in page. There's no
+    // single login route to target, since `/auth/login` is only routed when
+    // a default provider is configured.
     if status == StatusCode::UNAUTHORIZED {
-        let location = "/login";
+        let location = state
+            .router_config
+            .with_return_to("/", return_to.as_deref());
+        let location = location.as_str();
         if is_htmx {
             let mut response = StatusCode::NO_CONTENT.into_response();
             if let Ok(value) = HeaderValue::from_str(location) {

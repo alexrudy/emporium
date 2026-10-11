@@ -17,10 +17,11 @@ use crate::user::AppUser;
 
 /// Authenticated user, loaded from the session cookie.
 ///
-/// `from_request_parts` redirects to `/` on any miss (no cookie,
-/// invalid signature, expired session, missing user record) rather
-/// than returning a 401. This is a browser-facing app, so a redirect
-/// is friendlier than a JSON error.
+/// `from_request_parts` redirects to the sign-in page at `/` on any miss
+/// (no cookie, invalid signature, expired session, missing user record)
+/// rather than returning a 401, with a `return_to` pointing back at the
+/// requested page. This is a browser-facing app, so a redirect is
+/// friendlier than a JSON error.
 #[derive(Debug, Clone)]
 pub struct CurrentUser(pub AppUser);
 
@@ -31,9 +32,17 @@ impl FromRequestParts<AppState> for CurrentUser {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        let cookie_name = &state.config.cookie_key_cookie_name();
-        let raw = read_signed_cookie(&parts.headers, &state.config.cookie_key, cookie_name)
-            .ok_or_else(redirect_home)?;
+        let redirect_home = || {
+            let return_to = parts.uri.path_and_query().map(|p| p.as_str());
+            Redirect::to(&state.router_config.with_return_to("/", return_to))
+        };
+
+        let raw = read_signed_cookie(
+            &parts.headers,
+            &state.config.cookie_key,
+            &state.router_config.cookies.session,
+        )
+        .ok_or_else(redirect_home)?;
         let session_id = SessionId::from_string(raw);
         let data = state
             .sessions
@@ -42,22 +51,18 @@ impl FromRequestParts<AppState> for CurrentUser {
             .ok()
             .flatten()
             .ok_or_else(redirect_home)?;
-        let SessionData::Authenticated { username } = data else {
+        let SessionData::Authenticated { provider, username } = data else {
             return Err(redirect_home());
         };
         let user = state
             .users
-            .get(&username)
+            .get(&provider, &username)
             .await
             .ok()
             .flatten()
             .ok_or_else(redirect_home)?;
         Ok(CurrentUser(user))
     }
-}
-
-fn redirect_home() -> Redirect {
-    Redirect::to("/")
 }
 
 /// Like [`CurrentUser`] but never rejects: returns `None` when there's
@@ -100,12 +105,4 @@ pub fn read_signed_cookie(headers: &HeaderMap, key: &Key, name: &str) -> Option<
         }
     }
     jar.signed(key).get(name).map(|c| c.value().to_owned())
-}
-
-impl crate::config::Config {
-    /// Name of the session cookie. Matches the default in
-    /// `oath::server::CookieNames`.
-    pub fn cookie_key_cookie_name(&self) -> &'static str {
-        "oath_session"
-    }
 }

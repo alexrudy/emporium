@@ -2,7 +2,13 @@
 
 use serde::{Serialize, de::DeserializeOwned};
 
+use super::registry::ProviderId;
+
 /// Storage abstraction for persisted user records.
+///
+/// Records are keyed by `(provider, username)`: usernames (typically the
+/// OIDC `sub`) are only unique per provider, so implementations must keep
+/// each provider's users separate.
 ///
 /// One concrete implementation ships with the crate
 /// ([`crate::server::JsonFileUserStore`]). Apps with their own user
@@ -14,9 +20,19 @@ pub trait UserStore: Send + Sync + 'static {
     /// The error type produced by store operations.
     type Error: std::error::Error + Send + Sync + 'static;
 
-    /// Load the record for `username`. Returns `None` if absent.
-    async fn get(&self, username: &str) -> Result<Option<Self::Data>, Self::Error>;
+    /// Load the record for `username` at `provider`. Returns `None` if
+    /// absent.
+    async fn get(
+        &self,
+        provider: &ProviderId,
+        username: &str,
+    ) -> Result<Option<Self::Data>, Self::Error>;
 
-    /// Insert or replace the record for `username`.
-    async fn put(&self, username: &str, data: &Self::Data) -> Result<(), Self::Error>;
+    /// Insert or replace the record for `username` at `provider`.
+    async fn put(
+        &self,
+        provider: &ProviderId,
+        username: &str,
+        data: &Self::Data,
+    ) -> Result<(), Self::Error>;
 }

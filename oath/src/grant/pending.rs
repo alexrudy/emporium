@@ -1,5 +1,6 @@
 //! The pre-auth bundle carried across the authorization redirect.
 
+use http::Uri;
 use serde::{Deserialize, Serialize};
 
 use crate::endpoint::TokenEndpoint;
@@ -23,6 +24,16 @@ pub struct PendingAuthorization {
     /// The PKCE verifier whose challenge was sent in the authorization
     /// request. Must be presented to the token endpoint at exchange time.
     pub verifier: PkceVerifier,
+    /// The `redirect_uri` sent in the authorization request, if any.
+    /// Sent again at exchange time, since RFC 6749 §4.1.3 requires the
+    /// two to match. When absent, the token endpoint's configured
+    /// redirect URI is used.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "crate::provider::serde_uri_opt"
+    )]
+    pub redirect_uri: Option<Uri>,
 }
 
 impl PendingAuthorization {
@@ -41,7 +52,10 @@ impl PendingAuthorization {
         if !self.state.verify(returned_state) {
             return Err(CallbackError::StateMismatch);
         }
-        let request = AuthorizationCodeRequest::new(returned_code).pkce(self.verifier);
+        let mut request = AuthorizationCodeRequest::new(returned_code).pkce(self.verifier);
+        if let Some(redirect_uri) = self.redirect_uri {
+            request = request.redirect_uri(redirect_uri);
+        }
         let response = endpoint.exchange(request).await?;
         Ok(TokenSet::from(response))
     }

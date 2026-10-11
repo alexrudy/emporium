@@ -100,6 +100,12 @@ pub struct ProviderMetadata {
     #[serde(default)]
     pub token_endpoint_auth_methods_supported: Vec<String>,
 
+    /// RFC 9207: whether the provider includes an `iss` parameter in
+    /// authorization responses. When `true`, clients must reject
+    /// responses without one.
+    #[serde(default)]
+    pub authorization_response_iss_parameter_supported: bool,
+
     /// Any additional fields the provider returned.
     #[serde(flatten)]
     pub extra: BTreeMap<String, serde_json::Value>,
@@ -303,6 +309,30 @@ mod tests {
         );
         // Unknown fields land in `extra`.
         assert!(metadata.extra.contains_key("claims_supported"));
+    }
+
+    #[test]
+    fn parses_iss_parameter_support() {
+        let body = r#"{"issuer":"https://x","token_endpoint":"https://x/token",
+            "authorization_response_iss_parameter_supported":true}"#;
+        let metadata: ProviderMetadata = serde_json::from_str(body).unwrap();
+        assert!(metadata.authorization_response_iss_parameter_supported);
+
+        let body = r#"{"issuer":"https://x","token_endpoint":"https://x/token"}"#;
+        let metadata: ProviderMetadata = serde_json::from_str(body).unwrap();
+        assert!(!metadata.authorization_response_iss_parameter_supported);
+
+        let endpoint = crate::TokenEndpoint::builder()
+            .client_id("c")
+            .from_metadata(&ProviderMetadata {
+                authorization_response_iss_parameter_supported: true,
+                ..metadata
+            })
+            .unwrap()
+            .transport(api_client::mock::MockService::new())
+            .build()
+            .unwrap();
+        assert!(endpoint.authorization_response_iss_parameter_supported());
     }
 
     #[test]

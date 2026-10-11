@@ -16,7 +16,7 @@ pub struct AppState {
 impl AppState {
     pub fn new(config: Config, upstream: Authority) -> Self {
         Self {
-            inner: otool::state::AppState::new(config.oath, config.provider, config.sessions),
+            inner: otool::state::AppState::new(config.oath, config.providers, config.sessions),
             upstream,
         }
     }

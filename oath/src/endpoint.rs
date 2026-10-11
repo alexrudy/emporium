@@ -73,6 +73,8 @@ struct Inner {
     token_uri: Uri,
     device_uri: Option<Uri>,
     redirect_uri: Option<Uri>,
+    issuer: Option<String>,
+    iss_parameter_supported: bool,
     auth_style: ClientAuthStyle,
     transport: SharedClientService<Body, Body>,
 }
@@ -86,6 +88,8 @@ impl fmt::Debug for Inner {
             .field("token_uri", &self.token_uri)
             .field("device_uri", &self.device_uri)
             .field("redirect_uri", &self.redirect_uri)
+            .field("issuer", &self.issuer)
+            .field("iss_parameter_supported", &self.iss_parameter_supported)
             .field("auth_style", &self.auth_style)
             .finish_non_exhaustive()
     }
@@ -129,6 +133,22 @@ impl TokenEndpoint {
     /// authorization-code exchanges and in the authorization URL.
     pub fn redirect_uri(&self) -> Option<&Uri> {
         self.inner.redirect_uri.as_ref()
+    }
+
+    /// The provider's OIDC issuer identifier, if known. Set from
+    /// discovery metadata, or explicitly via
+    /// [`TokenEndpointBuilder::issuer`]. ID tokens from this provider are
+    /// expected to carry exactly this `iss` claim.
+    pub fn issuer(&self) -> Option<&str> {
+        self.inner.issuer.as_deref()
+    }
+
+    /// Whether the provider advertises RFC 9207 support: an `iss`
+    /// parameter in every authorization response. Set from discovery
+    /// metadata, or via
+    /// [`TokenEndpointBuilder::authorization_response_iss_parameter_supported`].
+    pub fn authorization_response_iss_parameter_supported(&self) -> bool {
+        self.inner.iss_parameter_supported
     }
 
     /// The configured client-auth style.
@@ -297,6 +317,8 @@ pub struct TokenEndpointBuilder {
     token_uri: Option<Uri>,
     device_uri: Option<Uri>,
     redirect_uri: Option<Uri>,
+    issuer: Option<String>,
+    iss_parameter_supported: bool,
     auth_style: ClientAuthStyle,
     transport: Option<SharedClientService<Body, Body>>,
 }
@@ -310,6 +332,8 @@ impl fmt::Debug for TokenEndpointBuilder {
             .field("token_uri", &self.token_uri)
             .field("device_uri", &self.device_uri)
             .field("redirect_uri", &self.redirect_uri)
+            .field("issuer", &self.issuer)
+            .field("iss_parameter_supported", &self.iss_parameter_supported)
             .field("auth_style", &self.auth_style)
             .finish_non_exhaustive()
     }
@@ -348,11 +372,13 @@ impl TokenEndpointBuilder {
         self
     }
 
-    /// Populate `auth_uri`, `token_uri`, and `device_uri` from a
-    /// [`crate::discovery::ProviderMetadata`] document.
+    /// Populate `auth_uri`, `token_uri`, `device_uri`, `issuer`, and RFC
+    /// 9207 support from a [`crate::discovery::ProviderMetadata`]
+    /// document.
     ///
-    /// Endpoints previously set on the builder are overwritten; client
-    /// credentials, redirect URI, and auth style are left untouched.
+    /// Endpoints and issuer settings previously set on the builder are
+    /// overwritten; client credentials, redirect URI, and auth style are
+    /// left untouched.
     /// Returns an error if the metadata's `token_endpoint` or any
     /// populated optional endpoint fails to parse as a URI.
     pub fn from_metadata(
@@ -366,7 +392,25 @@ impl TokenEndpointBuilder {
         if let Some(uri) = metadata.device_authorization_uri()? {
             self.device_uri = Some(uri);
         }
+        self.issuer = Some(metadata.issuer.clone());
+        self.iss_parameter_supported = metadata.authorization_response_iss_parameter_supported;
         Ok(self)
+    }
+
+    /// Optional: whether the provider sends an RFC 9207 `iss` parameter
+    /// in every authorization response. Set automatically by
+    /// [`from_metadata`](Self::from_metadata).
+    pub fn authorization_response_iss_parameter_supported(mut self, supported: bool) -> Self {
+        self.iss_parameter_supported = supported;
+        self
+    }
+
+    /// Optional: the provider's OIDC issuer identifier, compared exactly
+    /// against the `iss` claim of ID tokens. Set automatically by
+    /// [`from_metadata`](Self::from_metadata).
+    pub fn issuer(mut self, issuer: impl Into<String>) -> Self {
+        self.issuer = Some(issuer.into());
+        self
     }
 
     /// Optional: the redirect URI registered with the provider.
@@ -420,6 +464,8 @@ impl TokenEndpointBuilder {
                 token_uri,
                 device_uri: self.device_uri,
                 redirect_uri: self.redirect_uri,
+                issuer: self.issuer,
+                iss_parameter_supported: self.iss_parameter_supported,
                 auth_style: self.auth_style,
                 transport,
             }),
