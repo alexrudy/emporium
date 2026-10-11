@@ -81,7 +81,8 @@ bind_addr = "127.0.0.1:3000"
 # Default: "http://127.0.0.1:3000".
 external_origin = "http://127.0.0.1:3000"
 
-# Where the JsonFileUserStore writes <provider>:<sub>.json records.
+# Where the JsonFileUserStore writes user records: users/<sub>.json for
+# the single [oauth] provider, users/<provider>/<sub>.json otherwise.
 # Default: "./data".
 data_dir = "./data"
 

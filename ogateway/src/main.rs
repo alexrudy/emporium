@@ -129,7 +129,7 @@ fn install_tracing() {
 
 async fn handle_verify(OptionalCurrentUser(user): OptionalCurrentUser) -> impl IntoResponse {
     if let Some(user) = user {
-        tracing::debug!("verify: {}", user.username);
+        tracing::debug!(%user, "verify");
         StatusCode::NO_CONTENT.into_response()
     } else {
         StatusCode::FORBIDDEN.into_response()

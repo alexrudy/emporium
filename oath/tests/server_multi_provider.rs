@@ -26,24 +26,60 @@ use secret::Secret;
 use tower::ServiceExt as _;
 
 #[derive(Debug, Clone, Default)]
-struct MemoryUsers(Arc<Mutex<HashMap<String, String>>>);
+struct MemoryUsers(Arc<Mutex<HashMap<(ProviderId, String), String>>>);
+
+impl MemoryUsers {
+    fn record(&self, provider: &str, username: &str) -> Option<String> {
+        self.0
+            .lock()
+            .unwrap()
+            .get(&(id(provider), username.to_owned()))
+            .cloned()
+    }
+}
 
 #[async_trait::async_trait]
 impl UserStore for MemoryUsers {
     type Data = String;
     type Error = Infallible;
 
-    async fn get(&self, username: &str) -> Result<Option<String>, Infallible> {
-        Ok(self.0.lock().unwrap().get(username).cloned())
+    async fn get(
+        &self,
+        provider: &ProviderId,
+        username: &str,
+    ) -> Result<Option<String>, Infallible> {
+        Ok(self
+            .0
+            .lock()
+            .unwrap()
+            .get(&(provider.clone(), username.to_owned()))
+            .cloned())
     }
 
-    async fn put(&self, username: &str, data: &String) -> Result<(), Infallible> {
+    async fn put(
+        &self,
+        provider: &ProviderId,
+        username: &str,
+        data: &String,
+    ) -> Result<(), Infallible> {
         self.0
             .lock()
             .unwrap()
-            .insert(username.to_owned(), data.clone());
+            .insert((provider.clone(), username.to_owned()), data.clone());
         Ok(())
     }
+}
+
+/// Username is the bare `sub`; the record notes which provider the
+/// resolver was told about.
+fn resolver() -> IdentityResolver<String> {
+    IdentityResolver::with_provider(|provider: ProviderId, tokens| async move {
+        let claims = parse_id_token(&tokens)?;
+        Ok(Identity {
+            data: format!("{provider}:{}", claims.sub),
+            username: claims.sub,
+        })
+    })
 }
 
 fn token_response(sub: &str) -> Vec<u8> {
@@ -105,13 +141,7 @@ fn setup(
 
     let users = MemoryUsers::default();
     let sessions = InMemorySessionStore::default();
-    let identity = IdentityResolver::with_provider(|provider: ProviderId, tokens| async move {
-        let claims = parse_id_token(&tokens)?;
-        Ok(Identity {
-            username: format!("{provider}:{}", claims.sub),
-            data: claims.sub,
-        })
-    });
+    let identity = resolver();
 
     let builder = OAuth2Router::<_, _, Uri>::multi_provider(
         sessions.clone(),
@@ -175,6 +205,23 @@ async fn begin_login(router: &Router, path: &str) -> (url::Url, String) {
     (location, preauth)
 }
 
+/// Run a full login + callback against `provider`'s routes.
+async fn complete_login(router: &Router, provider: &str) {
+    let (url, preauth) = begin_login(router, &format!("/auth/{provider}/login")).await;
+    let state = query(&url, "state").unwrap();
+    let resp = get(
+        router,
+        &format!("/auth/{provider}/callback?code=c&state={state}"),
+        Some(&preauth),
+    )
+    .await;
+    assert!(
+        resp.status().is_redirection(),
+        "{provider} callback -> {}",
+        resp.status()
+    );
+}
+
 fn query(url: &url::Url, key: &str) -> Option<String> {
     url.query_pairs()
         .find(|(k, _)| k == key)
@@ -213,8 +260,8 @@ async fn each_provider_has_its_own_login_and_callback() {
     assert_eq!(setup.mock.count_for("/okta/token"), 1);
     assert_eq!(setup.mock.count_for("/google/token"), 0);
     assert_eq!(
-        setup.users.get("okta:o-456").await.unwrap().as_deref(),
-        Some("o-456")
+        setup.users.record("okta", "o-456").as_deref(),
+        Some("okta:o-456")
     );
 
     // The authenticated session records the provider.
@@ -225,10 +272,37 @@ async fn each_provider_has_its_own_login_and_callback() {
     match setup.sessions.get(&session_id).await.unwrap().unwrap() {
         SessionData::Authenticated { provider, username } => {
             assert_eq!(provider, id("okta"));
-            assert_eq!(username, "okta:o-456");
+            assert_eq!(username, "o-456");
         }
         other => panic!("expected authenticated session, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn same_sub_at_two_providers_is_two_users() {
+    let setup = setup(|b| b);
+    // Both providers issue the same `sub`.
+    setup
+        .mock
+        .enqueue_json("/google/token", StatusCode::OK, &token_response("same"));
+    setup
+        .mock
+        .enqueue_json("/okta/token", StatusCode::OK, &token_response("same"));
+
+    // `setup` queued one response per provider (g-123 / o-456) ahead of
+    // the shared `sub`, so log in twice with each.
+    for provider in ["google", "okta", "google", "okta"] {
+        complete_login(&setup.router, provider).await;
+    }
+
+    assert_eq!(
+        setup.users.record("google", "same").as_deref(),
+        Some("google:same")
+    );
+    assert_eq!(
+        setup.users.record("okta", "same").as_deref(),
+        Some("okta:same")
+    );
 }
 
 #[tokio::test]
@@ -290,13 +364,7 @@ async fn new_keeps_root_paths_alongside_added_providers() {
     mock.enqueue_json("/legacy/token", StatusCode::OK, &token_response("l-1"));
 
     let users = MemoryUsers::default();
-    let identity = IdentityResolver::with_provider(|provider: ProviderId, tokens| async move {
-        let claims = parse_id_token(&tokens)?;
-        Ok(Identity {
-            username: format!("{provider}:{}", claims.sub),
-            data: claims.sub,
-        })
-    });
+    let identity = resolver();
     let router: Router = OAuth2Router::<_, _, Uri>::new(
         endpoint("legacy", &mock),
         InMemorySessionStore::default(),
@@ -322,20 +390,14 @@ async fn new_keeps_root_paths_alongside_added_providers() {
         "callback -> {}",
         resp.status()
     );
-    assert!(users.get("default:l-1").await.unwrap().is_some());
+    assert!(users.record("default", "l-1").is_some());
 
     let (url, _) = begin_login(&router, "/auth/google/login").await;
     assert_eq!(url.host_str(), Some("google.example.com"));
 }
 
 fn trusted_header_router(mock: &ScriptedMock, users: MemoryUsers) -> Router {
-    let identity = IdentityResolver::with_provider(|provider: ProviderId, tokens| async move {
-        let claims = parse_id_token(&tokens)?;
-        Ok(Identity {
-            username: format!("{provider}:{}", claims.sub),
-            data: claims.sub,
-        })
-    });
+    let identity = resolver();
     OAuth2Router::<_, _, TrustedHeader>::new(
         endpoint("legacy", mock),
         InMemorySessionStore::default(),
@@ -444,7 +506,7 @@ async fn exchange_repeats_the_redirect_uri_sent_to_the_provider() {
             "callback -> {}",
             resp.status()
         );
-        assert!(users.get(&format!("google:{sub}")).await.unwrap().is_some());
+        assert!(users.record("google", sub).is_some());
 
         let exchange = mock
             .requests()

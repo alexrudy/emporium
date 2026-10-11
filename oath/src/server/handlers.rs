@@ -210,7 +210,7 @@ where
 
     state
         .users
-        .put(&username, &data)
+        .put(provider.id(), &username, &data)
         .await
         .map_err(ServerError::user_store)?;
 

@@ -71,7 +71,7 @@ where
 
             if let Some(user) = user {
                 //TODO: Do we need to do host translation here?
-                tracing::trace!("Processing request for {}", user.username);
+                tracing::trace!(%user, "Processing request");
 
                 parts.uri = state.rewrite_uri(&parts.uri);
 

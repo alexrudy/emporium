@@ -1,7 +1,8 @@
 //! Persisted user record + identity resolver.
 //!
 //! [`AppUser`] is the payload [`oath::server::JsonFileUserStore`]
-//! serializes to `users/<provider>:<sub>.json`. The identity resolver
+//! serializes to `users/<sub>.json` (the single `[oauth]` provider) or
+//! `users/<provider>/<sub>.json` (named providers). The identity resolver
 //! maps the OIDC `IdClaims` parsed out of the `id_token` into one of
 //! these.
 
@@ -40,8 +41,8 @@ pub struct AppUser {
 }
 
 /// Default identity resolver: parse the `id_token` and project the
-/// claims into an [`AppUser`], keyed by `{provider}:{sub}` since `sub`
-/// is only unique per provider.
+/// claims into an [`AppUser`]. The username is the `sub`; the user store
+/// keeps each provider's users separate.
 ///
 /// Note: `created_at` is overwritten on every login because the
 /// resolver doesn't know whether the user already exists. Phase C
@@ -55,7 +56,7 @@ pub fn identity_resolver() -> IdentityResolver<AppUser> {
             .clone()
             .or_else(|| claims.preferred_username.clone());
         Ok(Identity {
-            username: format!("{provider}:{}", claims.sub),
+            username: claims.sub.clone(),
             data: AppUser {
                 provider,
                 sub: claims.sub,

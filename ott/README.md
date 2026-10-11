@@ -11,7 +11,7 @@ profile page.
   │         │ ◄────────────────  │          │ ◄──── callback ────── │          │
   └─────────┘    /profile        └──────────┘                       └──────────┘
                                        │
-                                       └── writes users/<provider>:<sub>.json (LocalDriver)
+                                       └── writes users/[<provider>/]<sub>.json (LocalDriver)
 ```
 
 ## Quick start (Google, discovery mode)
@@ -65,9 +65,9 @@ set `OAUTH_AUTH_URI` and `OAUTH_TOKEN_URI` instead of `OAUTH_ISSUER`.
 
 After signing in once, you should see:
 
-- `users/<provider>:<sub>.json` exists under `DATA_DIR` (defaults to
-  `./data/`). The single `[oauth]` / `OAUTH_*` provider's id is
-  `default`.
+- A user record exists under `DATA_DIR` (defaults to `./data/`):
+  `users/<sub>.json` for the single `[oauth]` / `OAUTH_*` provider, or
+  `users/<provider>/<sub>.json` for a named provider.
 - The profile page shows `Provider`, `Subject`, `Email`, `verified`
   badge, the timestamps, and a pretty-printed JSON of the stored record.
 - Clicking **Sign out** redirects to `/`, deletes the in-memory

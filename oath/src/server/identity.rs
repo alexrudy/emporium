@@ -23,9 +23,10 @@ use super::registry::ProviderId;
 
 /// Identity extracted from a [`TokenSet`] during the callback.
 ///
-/// `username` is the stable per-provider identifier the
-/// [`crate::server::UserStore`] keys by (typically the OIDC `sub`
-/// claim). `data` is the app-defined payload to persist.
+/// `username` is the stable per-provider identifier (typically the OIDC
+/// `sub` claim); the [`crate::server::UserStore`] keys records by it
+/// together with the provider. `data` is the app-defined payload to
+/// persist.
 #[derive(Debug, Clone)]
 pub struct Identity<T> {
     /// Stable per-provider user identifier.
@@ -182,21 +183,22 @@ where
     }
 
     /// Wrap an async closure that also receives the [`ProviderId`] the
-    /// tokens came from.
+    /// tokens came from, e.g. to read provider-specific claims or record
+    /// the provider in the user's data.
     ///
-    /// OIDC `sub` claims are only unique per issuer, so when more than
-    /// one provider is registered, use this to namespace usernames
-    /// (or otherwise disambiguate them) before they reach the
-    /// [`crate::server::UserStore`].
+    /// There's no need to namespace `username` by provider: the
+    /// [`crate::server::UserStore`] and the session both key users by
+    /// `(provider, username)`.
     ///
     /// ```
     /// # use oath::server::{parse_id_token, Identity, IdentityResolver, ProviderId};
     /// # use oath::TokenSet;
+    /// struct AppUser { provider: ProviderId, email: Option<String> }
     /// let resolver = IdentityResolver::with_provider(|provider: ProviderId, tokens: TokenSet| async move {
     ///     let claims = parse_id_token(&tokens)?;
     ///     Ok(Identity {
-    ///         username: format!("{provider}:{}", claims.sub),
-    ///         data: (),
+    ///         username: claims.sub,
+    ///         data: AppUser { provider, email: claims.email },
     ///     })
     /// });
     /// # let _ = resolver;
