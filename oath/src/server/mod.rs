@@ -58,8 +58,9 @@ pub use self::identity::{
 pub use self::redirect::{
     ExtractRedirect, ForwardedError, ForwardedHeader, TrustedHeader, XForwardedHeaders,
 };
-pub use self::registry::{InvalidProviderId, Provider, ProviderId};
+pub use self::registry::{InvalidProviderId, IssParameterError, Provider, ProviderId};
 pub use self::session::{InMemorySessionStore, SessionData, SessionId, SessionStore};
+pub use crate::provider::IssParameter;
 
 #[cfg(feature = "json-file-user-store")]
 pub use self::storage::JsonFileUserStore;

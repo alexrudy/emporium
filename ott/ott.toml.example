@@ -57,9 +57,17 @@ issuer = "https://accounts.google.com"
 # Entra's multi-tenant `common` endpoint. Default: false.
 # skip_issuer_validation = true
 
+# RFC 9207 `iss` parameter on the login callback:
+#   "auto"     — checked when present; required when discovery advertises
+#                support (default)
+#   "required" — always required (needs a discovered issuer)
+#   "ignored"  — opt out, for providers that send a wrong `iss` or
+#                advertise support but don't send it
+# iss_parameter = "auto"
+
 # Named providers. Same fields as the single provider above (including
-# `skip_issuer_validation`), plus an optional `scopes` overriding
-# [oauth] scopes. `provider_name` defaults
+# `skip_issuer_validation` and `iss_parameter`), plus an optional
+# `scopes` overriding [oauth] scopes. `provider_name` defaults
 # to the id. Ids may contain ASCII letters, digits, `-`, and `_`.
 #
 # [providers.okta]

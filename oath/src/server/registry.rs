@@ -10,6 +10,7 @@ use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::provider::IssParameter;
 use crate::{ScopeSet, TokenEndpoint};
 
 use super::config::OAuth2RouterConfig;
@@ -124,6 +125,32 @@ pub struct InvalidProviderId {
     reason: &'static str,
 }
 
+/// An authorization response failed the RFC 9207 `iss` check.
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
+pub enum IssParameterError {
+    /// The response's `iss` names a different issuer.
+    #[error(
+        "authorization response iss {actual:?} does not match the provider's issuer {expected:?}"
+    )]
+    Mismatch {
+        /// The provider's issuer.
+        expected: String,
+        /// The response's `iss` parameter.
+        actual: String,
+    },
+    /// The provider sends `iss` (or it's required), but the response has
+    /// none.
+    #[error("authorization response has no iss parameter; expected {expected:?}")]
+    Missing {
+        /// The provider's issuer.
+        expected: String,
+    },
+    /// [`IssParameter::Required`] is set, but the provider's issuer isn't
+    /// known (e.g. explicit endpoints without one).
+    #[error("the iss parameter is required, but the provider's issuer is not known")]
+    UnknownIssuer,
+}
+
 /// Where a provider's login and callback routes are mounted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Mount {
@@ -143,6 +170,7 @@ pub struct Provider {
     scopes: Option<ScopeSet>,
     display_name: Option<String>,
     validate_issuer: bool,
+    iss_parameter: IssParameter,
     pub(crate) mount: Mount,
 }
 
@@ -160,6 +188,7 @@ impl Provider {
             scopes: None,
             display_name: None,
             validate_issuer: true,
+            iss_parameter: IssParameter::Auto,
             mount: Mount::Scoped,
         }
     }
@@ -203,6 +232,48 @@ impl Provider {
     pub fn skip_issuer_validation(mut self) -> Self {
         self.validate_issuer = false;
         self
+    }
+
+    /// How to treat the RFC 9207 `iss` parameter on this provider's
+    /// authorization responses. Defaults to [`IssParameter::Auto`]; use
+    /// [`IssParameter::Ignored`] to opt out for providers that get it
+    /// wrong.
+    pub fn with_iss_parameter(mut self, policy: IssParameter) -> Self {
+        self.iss_parameter = policy;
+        self
+    }
+
+    /// Check an authorization response's `iss` parameter against this
+    /// provider's [`IssParameter`] policy (RFC 9207 §2.4). The comparison
+    /// is exact string equality.
+    pub fn check_iss_parameter(&self, iss: Option<&str>) -> Result<(), IssParameterError> {
+        let required = match self.iss_parameter {
+            IssParameter::Ignored => return Ok(()),
+            IssParameter::Required => true,
+            IssParameter::Auto => self
+                .endpoint
+                .authorization_response_iss_parameter_supported(),
+        };
+
+        let Some(expected) = self.endpoint.issuer() else {
+            return if self.iss_parameter == IssParameter::Required {
+                Err(IssParameterError::UnknownIssuer)
+            } else {
+                Ok(())
+            };
+        };
+
+        match iss {
+            Some(actual) if actual == expected => Ok(()),
+            Some(actual) => Err(IssParameterError::Mismatch {
+                expected: expected.to_owned(),
+                actual: actual.to_owned(),
+            }),
+            None if required => Err(IssParameterError::Missing {
+                expected: expected.to_owned(),
+            }),
+            None => Ok(()),
+        }
     }
 
     /// The provider's id.
@@ -280,5 +351,89 @@ mod tests {
     #[test]
     fn default_is_default() {
         assert_eq!(ProviderId::default().as_str(), "default");
+    }
+
+    const ISSUER: &str = "https://idp.example.com";
+
+    fn provider(issuer: Option<&str>, supported: bool, policy: IssParameter) -> Provider {
+        let mut builder = TokenEndpoint::builder()
+            .client_id("c")
+            .token_uri("https://idp.example.com/token".parse().unwrap())
+            .authorization_response_iss_parameter_supported(supported)
+            .transport(api_client::mock::MockService::new());
+        if let Some(issuer) = issuer {
+            builder = builder.issuer(issuer);
+        }
+        Provider::new(ProviderId::new("idp").unwrap(), builder.build().unwrap())
+            .with_iss_parameter(policy)
+    }
+
+    fn mismatch() -> IssParameterError {
+        IssParameterError::Mismatch {
+            expected: ISSUER.into(),
+            actual: "https://evil.example.com".into(),
+        }
+    }
+
+    fn missing() -> IssParameterError {
+        IssParameterError::Missing {
+            expected: ISSUER.into(),
+        }
+    }
+
+    #[test]
+    fn auto_checks_iss_when_present() {
+        for supported in [false, true] {
+            let p = provider(Some(ISSUER), supported, IssParameter::Auto);
+            assert_eq!(p.check_iss_parameter(Some(ISSUER)), Ok(()));
+            assert_eq!(
+                p.check_iss_parameter(Some("https://evil.example.com")),
+                Err(mismatch())
+            );
+            // Exact comparison: no trailing-slash normalization.
+            assert!(
+                p.check_iss_parameter(Some("https://idp.example.com/"))
+                    .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn auto_requires_iss_only_when_advertised() {
+        let p = provider(Some(ISSUER), false, IssParameter::Auto);
+        assert_eq!(p.check_iss_parameter(None), Ok(()));
+
+        let p = provider(Some(ISSUER), true, IssParameter::Auto);
+        assert_eq!(p.check_iss_parameter(None), Err(missing()));
+    }
+
+    #[test]
+    fn auto_without_known_issuer_skips() {
+        let p = provider(None, true, IssParameter::Auto);
+        assert_eq!(p.check_iss_parameter(None), Ok(()));
+        assert_eq!(p.check_iss_parameter(Some("https://anything")), Ok(()));
+    }
+
+    #[test]
+    fn required_always_requires_iss() {
+        let p = provider(Some(ISSUER), false, IssParameter::Required);
+        assert_eq!(p.check_iss_parameter(Some(ISSUER)), Ok(()));
+        assert_eq!(p.check_iss_parameter(None), Err(missing()));
+
+        let p = provider(None, false, IssParameter::Required);
+        assert_eq!(
+            p.check_iss_parameter(Some(ISSUER)),
+            Err(IssParameterError::UnknownIssuer)
+        );
+    }
+
+    #[test]
+    fn ignored_never_checks() {
+        let p = provider(Some(ISSUER), true, IssParameter::Ignored);
+        assert_eq!(p.check_iss_parameter(None), Ok(()));
+        assert_eq!(
+            p.check_iss_parameter(Some("https://evil.example.com")),
+            Ok(())
+        );
     }
 }

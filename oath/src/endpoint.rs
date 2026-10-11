@@ -74,6 +74,7 @@ struct Inner {
     device_uri: Option<Uri>,
     redirect_uri: Option<Uri>,
     issuer: Option<String>,
+    iss_parameter_supported: bool,
     auth_style: ClientAuthStyle,
     transport: SharedClientService<Body, Body>,
 }
@@ -88,6 +89,7 @@ impl fmt::Debug for Inner {
             .field("device_uri", &self.device_uri)
             .field("redirect_uri", &self.redirect_uri)
             .field("issuer", &self.issuer)
+            .field("iss_parameter_supported", &self.iss_parameter_supported)
             .field("auth_style", &self.auth_style)
             .finish_non_exhaustive()
     }
@@ -139,6 +141,14 @@ impl TokenEndpoint {
     /// expected to carry exactly this `iss` claim.
     pub fn issuer(&self) -> Option<&str> {
         self.inner.issuer.as_deref()
+    }
+
+    /// Whether the provider advertises RFC 9207 support: an `iss`
+    /// parameter in every authorization response. Set from discovery
+    /// metadata, or via
+    /// [`TokenEndpointBuilder::authorization_response_iss_parameter_supported`].
+    pub fn authorization_response_iss_parameter_supported(&self) -> bool {
+        self.inner.iss_parameter_supported
     }
 
     /// The configured client-auth style.
@@ -308,6 +318,7 @@ pub struct TokenEndpointBuilder {
     device_uri: Option<Uri>,
     redirect_uri: Option<Uri>,
     issuer: Option<String>,
+    iss_parameter_supported: bool,
     auth_style: ClientAuthStyle,
     transport: Option<SharedClientService<Body, Body>>,
 }
@@ -322,6 +333,7 @@ impl fmt::Debug for TokenEndpointBuilder {
             .field("device_uri", &self.device_uri)
             .field("redirect_uri", &self.redirect_uri)
             .field("issuer", &self.issuer)
+            .field("iss_parameter_supported", &self.iss_parameter_supported)
             .field("auth_style", &self.auth_style)
             .finish_non_exhaustive()
     }
@@ -360,10 +372,11 @@ impl TokenEndpointBuilder {
         self
     }
 
-    /// Populate `auth_uri`, `token_uri`, `device_uri`, and `issuer` from
-    /// a [`crate::discovery::ProviderMetadata`] document.
+    /// Populate `auth_uri`, `token_uri`, `device_uri`, `issuer`, and RFC
+    /// 9207 support from a [`crate::discovery::ProviderMetadata`]
+    /// document.
     ///
-    /// Endpoints and issuer previously set on the builder are
+    /// Endpoints and issuer settings previously set on the builder are
     /// overwritten; client credentials, redirect URI, and auth style are
     /// left untouched.
     /// Returns an error if the metadata's `token_endpoint` or any
@@ -380,7 +393,16 @@ impl TokenEndpointBuilder {
             self.device_uri = Some(uri);
         }
         self.issuer = Some(metadata.issuer.clone());
+        self.iss_parameter_supported = metadata.authorization_response_iss_parameter_supported;
         Ok(self)
+    }
+
+    /// Optional: whether the provider sends an RFC 9207 `iss` parameter
+    /// in every authorization response. Set automatically by
+    /// [`from_metadata`](Self::from_metadata).
+    pub fn authorization_response_iss_parameter_supported(mut self, supported: bool) -> Self {
+        self.iss_parameter_supported = supported;
+        self
     }
 
     /// Optional: the provider's OIDC issuer identifier, compared exactly
@@ -443,6 +465,7 @@ impl TokenEndpointBuilder {
                 device_uri: self.device_uri,
                 redirect_uri: self.redirect_uri,
                 issuer: self.issuer,
+                iss_parameter_supported: self.iss_parameter_supported,
                 auth_style: self.auth_style,
                 transport,
             }),

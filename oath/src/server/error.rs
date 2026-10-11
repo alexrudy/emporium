@@ -67,6 +67,10 @@ pub enum ServerError {
     #[error("id_token rejected: {0}")]
     InvalidIdToken(#[source] super::IdentityError),
 
+    /// The authorization response failed the RFC 9207 `iss` check.
+    #[error(transparent)]
+    IssParameter(#[from] super::IssParameterError),
+
     /// The session store failed.
     #[error("session store error: {0}")]
     SessionStore(#[source] BoxError),
@@ -117,6 +121,10 @@ impl ServerError {
             Self::Callback(crate::CallbackError::StateMismatch) => StatusCode::BAD_REQUEST,
             Self::InvalidUsername(_) => StatusCode::BAD_REQUEST,
             Self::ProviderMismatch { .. } => StatusCode::BAD_REQUEST,
+            Self::IssParameter(super::IssParameterError::UnknownIssuer) => {
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
+            Self::IssParameter(_) => StatusCode::BAD_REQUEST,
             Self::Callback(_) | Self::Oauth2(_) => StatusCode::BAD_GATEWAY,
             Self::Identity(_) | Self::InvalidIdToken(_) => StatusCode::BAD_GATEWAY,
             Self::SessionStore(_) | Self::UserStore(_) => StatusCode::INTERNAL_SERVER_ERROR,

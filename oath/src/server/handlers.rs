@@ -65,6 +65,9 @@ pub(crate) struct CallbackParams {
     error: Option<String>,
     #[serde(default)]
     error_description: Option<String>,
+    /// RFC 9207 issuer identifier.
+    #[serde(default)]
+    iss: Option<String>,
 }
 
 /// `GET {prefix}/{provider}/login` (or `{prefix}/login` for the default
@@ -143,6 +146,10 @@ where
     S: SessionStore,
     U: UserStore,
 {
+    // RFC 9207 §2.4: check `iss` before acting on the response at all,
+    // including error responses.
+    provider.check_iss_parameter(params.iss.as_deref())?;
+
     if let Some(code) = params.error {
         return Err(ServerError::ProviderError {
             code,

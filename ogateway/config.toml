@@ -40,6 +40,11 @@ token_uri = "http://localhost:3000/api/oauth/token"
 # providers whose discovery document doesn't state the exact issuer, such
 # as Microsoft Entra's multi-tenant `common` endpoint.
 #
+# `iss_parameter` controls the RFC 9207 `iss` parameter on the login
+# callback: "auto" (default: checked when present, required when
+# discovery advertises support), "required", or "ignored" (opt out, for
+# providers that send a wrong one or advertise support but don't send it).
+#
 # [providers.google]
 # client_id = "..."
 # client_secret = "..."

@@ -28,7 +28,7 @@ use http::Uri;
 use oath::server::ProviderId;
 use oath::{
     ScopeSet,
-    provider::{OAuthProviderConfig, ProviderEndpoints, parse_configured_uri},
+    provider::{IssParameter, OAuthProviderConfig, ProviderEndpoints, parse_configured_uri},
 };
 use secret::Secret;
 use serde::Deserialize;
@@ -251,6 +251,7 @@ where
     };
 
     let skip_issuer_validation = parse_env(get, &var("SKIP_ISSUER_VALIDATION"), Some("false"))?;
+    let iss_parameter: IssParameter = parse_env(get, &var("ISS_PARAMETER"), Some("auto"))?;
 
     Ok(OAuthProviderConfig {
         external_origin: Some(external_origin.clone()),
@@ -260,6 +261,7 @@ where
         endpoints,
         scopes,
         skip_issuer_validation,
+        iss_parameter,
     })
 }
 
@@ -344,6 +346,7 @@ struct RawOauth {
     auth_uri: Option<String>,
     token_uri: Option<String>,
     skip_issuer_validation: Option<bool>,
+    iss_parameter: Option<IssParameter>,
 }
 
 /// `[providers.<id>]`.
@@ -358,6 +361,7 @@ struct RawProvider {
     auth_uri: Option<String>,
     token_uri: Option<String>,
     skip_issuer_validation: Option<bool>,
+    iss_parameter: Option<IssParameter>,
 }
 
 impl RawProvider {
@@ -370,6 +374,7 @@ impl RawProvider {
             && self.auth_uri.is_none()
             && self.token_uri.is_none()
             && self.skip_issuer_validation.is_none()
+            && self.iss_parameter.is_none()
     }
 
     /// Resolve into an [`OAuthProviderConfig`]. `path` is the TOML table
@@ -417,6 +422,7 @@ impl RawProvider {
             endpoints,
             scopes,
             skip_issuer_validation: self.skip_issuer_validation.unwrap_or(false),
+            iss_parameter: self.iss_parameter.unwrap_or_default(),
         })
     }
 }
@@ -497,6 +503,7 @@ impl RawConfig {
             auth_uri: oauth.auth_uri,
             token_uri: oauth.token_uri,
             skip_issuer_validation: oauth.skip_issuer_validation,
+            iss_parameter: oauth.iss_parameter,
         };
         let root_provider = if !root.is_empty() || raw_providers.is_empty() {
             Some(root.into_provider("oauth", DEFAULT_PROVIDER_NAME, &external_origin)?)
@@ -899,6 +906,30 @@ mod tests {
     }
 
     #[test]
+    fn iss_parameter_from_env() {
+        let cfg = build(minimal_env()).unwrap();
+        assert_eq!(root(&cfg).iss_parameter, IssParameter::Auto);
+
+        let cfg = build(with_env(&[("OAUTH_ISS_PARAMETER", "ignored")])).unwrap();
+        assert_eq!(root(&cfg).iss_parameter, IssParameter::Ignored);
+
+        let mut env = named_env();
+        env.push(("OAUTH_GOOGLE_ISS_PARAMETER", "Required".to_owned()));
+        let cfg = build(env).unwrap();
+        assert_eq!(
+            cfg.providers[&id("google")].iss_parameter,
+            IssParameter::Required
+        );
+        assert_eq!(
+            cfg.providers[&id("my-idp")].iss_parameter,
+            IssParameter::Auto
+        );
+
+        let err = build(with_env(&[("OAUTH_ISS_PARAMETER", "sometimes")])).unwrap_err();
+        assert!(format!("{err:#}").contains("OAUTH_ISS_PARAMETER"));
+    }
+
+    #[test]
     fn provider_list_rejects_env_clashes() {
         assert!(parse_provider_list("my-idp, my_idp").is_err());
         assert!(parse_provider_list("bad/id").is_err());
@@ -1149,6 +1180,47 @@ mod tests {
         let cfg = Config::from_toml_str(&body).unwrap();
         assert!(root(&cfg).skip_issuer_validation);
         assert!(cfg.providers[&id("entra")].skip_issuer_validation);
+    }
+
+    #[test]
+    fn toml_iss_parameter() {
+        let key = test_cookie_key();
+        let body = format!(
+            r#"
+                [oauth]
+                client_id = "c"
+                client_secret = "s"
+                issuer = "https://x"
+                iss_parameter = "ignored"
+
+                [providers.okta]
+                client_id = "o"
+                client_secret = "os"
+                issuer = "https://okta.example.com"
+                iss_parameter = "required"
+
+                [providers.google]
+                client_id = "g"
+                client_secret = "gs"
+                issuer = "https://accounts.google.com"
+
+                [cookies]
+                key = "{key}"
+            "#,
+        );
+        let cfg = Config::from_toml_str(&body).unwrap();
+        assert_eq!(root(&cfg).iss_parameter, IssParameter::Ignored);
+        assert_eq!(
+            cfg.providers[&id("okta")].iss_parameter,
+            IssParameter::Required
+        );
+        assert_eq!(
+            cfg.providers[&id("google")].iss_parameter,
+            IssParameter::Auto
+        );
+
+        let err = Config::from_toml_str(&body.replace(r#""ignored""#, r#""nope""#)).unwrap_err();
+        assert!(format!("{err:#}").contains("nope"), "{err:#}");
     }
 
     #[test]

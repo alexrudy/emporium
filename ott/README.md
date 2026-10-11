@@ -102,6 +102,7 @@ based on your deployment style.
 | `COOKIE_KEY`          | yes      | — (base64, ≥64 bytes)         |
 | `OAUTH_SCOPES`        | no       | `openid email profile`        |
 | `OAUTH_SKIP_ISSUER_VALIDATION` | no | `false`                 |
+| `OAUTH_ISS_PARAMETER` | no       | `auto`                        |
 | `PROVIDER_NAME`       | no       | `OAuth`                       |
 | `EXTERNAL_ORIGIN`     | no       | `http://127.0.0.1:3000`       |
 | `BIND_ADDR`           | no       | `127.0.0.1:3000`              |
@@ -117,7 +118,8 @@ single provider served at `/auth/login`. To add more, list ids in
 `OAUTH_PROVIDERS` and configure each with `OAUTH_<ID>_CLIENT_ID`,
 `OAUTH_<ID>_CLIENT_SECRET`, `OAUTH_<ID>_ISSUER` (or `_AUTH_URI` +
 `_TOKEN_URI`), and optionally `OAUTH_<ID>_PROVIDER_NAME`,
-`OAUTH_<ID>_SCOPES`, and `OAUTH_<ID>_SKIP_ISSUER_VALIDATION`. `<ID>` is the id upper-cased with `-` replaced by
+`OAUTH_<ID>_SCOPES`, `OAUTH_<ID>_SKIP_ISSUER_VALIDATION`, and
+`OAUTH_<ID>_ISS_PARAMETER`. `<ID>` is the id upper-cased with `-` replaced by
 `_`. Each named provider is served at `/auth/<id>/login`. With named
 providers configured, the unprefixed provider is optional. In TOML, the
 equivalent is a `[providers.<id>]` table per provider (see
@@ -130,6 +132,13 @@ providers) its `iss` must exactly match the discovered issuer. Set
 in TOML) to skip the `iss` check for providers whose discovery document
 doesn't state the exact issuer, such as Microsoft Entra's multi-tenant
 `common` endpoint.
+
+**Callback `iss` parameter (RFC 9207).** If the login callback carries an
+`iss` parameter, it must exactly match the provider's discovered issuer;
+if discovery advertises `authorization_response_iss_parameter_supported`,
+callbacks without one are rejected. `OAUTH_ISS_PARAMETER` (or
+`iss_parameter` in TOML) sets the policy per provider: `auto` (default),
+`required`, or `ignored` to opt out for providers that get it wrong.
 
 **Endpoint resolution.** Set *either* `OAUTH_ISSUER` (discovery —
 ott fetches `<issuer>/.well-known/openid-configuration` at startup

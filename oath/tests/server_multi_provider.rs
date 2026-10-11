@@ -19,8 +19,9 @@ use cookie::Key;
 use http::{HeaderName, Request, StatusCode, Uri, header};
 use oath::TokenEndpoint;
 use oath::server::{
-    Identity, IdentityResolver, InMemorySessionStore, OAuth2Router, Provider, ProviderId,
-    SessionData, SessionId, SessionStore as _, TrustedHeader, UserStore, parse_id_token,
+    Identity, IdentityResolver, InMemorySessionStore, IssParameter, OAuth2Router, Provider,
+    ProviderId, SessionData, SessionId, SessionStore as _, TrustedHeader, UserStore,
+    parse_id_token,
 };
 use secret::Secret;
 use tower::ServiceExt as _;
@@ -413,6 +414,113 @@ async fn issuer_check_can_be_skipped_but_audience_still_applies() {
     .await;
     assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
     assert!(setup.users.record("entra", "u2").is_none());
+}
+
+/// An endpoint for `name` that advertises RFC 9207 support.
+fn iss_endpoint(name: &str, mock: &ScriptedMock) -> TokenEndpoint {
+    TokenEndpoint::builder()
+        .client_id(format!("{name}-client"))
+        .client_secret(Secret::from("secret"))
+        .auth_uri(
+            format!("https://{name}.example.com/authorize")
+                .parse()
+                .unwrap(),
+        )
+        .token_uri(
+            format!("https://{name}.example.com/{name}/token")
+                .parse()
+                .unwrap(),
+        )
+        .redirect_uri(
+            format!("https://app.example.com/auth/{name}/callback")
+                .parse()
+                .unwrap(),
+        )
+        .issuer(format!("https://{name}.example.com"))
+        .authorization_response_iss_parameter_supported(true)
+        .transport(mock.clone())
+        .build()
+        .unwrap()
+}
+
+/// Log in at `provider`, then hit its callback with `extra` appended to
+/// the query; return the callback status.
+async fn callback_status_with_query(router: &Router, provider: &str, extra: &str) -> StatusCode {
+    let (url, preauth) = begin_login(router, &format!("/auth/{provider}/login")).await;
+    let state = query(&url, "state").unwrap();
+    get(
+        router,
+        &format!("/auth/{provider}/callback?code=c&state={state}{extra}"),
+        Some(&preauth),
+    )
+    .await
+    .status()
+}
+
+#[tokio::test]
+async fn iss_parameter_is_enforced_when_advertised() {
+    let mock = ScriptedMock::new();
+    let setup = setup(|b| b.provider(Provider::new(id("idp"), iss_endpoint("idp", &mock))));
+    mock.enqueue_json("/idp/token", StatusCode::OK, &token_response("idp", "u1"));
+
+    // Missing, or from another issuer: rejected before the code exchange.
+    for extra in ["", "&iss=https%3A%2F%2Fokta.example.com"] {
+        let status = callback_status_with_query(&setup.router, "idp", extra).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{extra:?}");
+    }
+    assert_eq!(mock.count_for("/idp/token"), 0);
+
+    // Error responses are checked too.
+    let status = callback_status_with_query(
+        &setup.router,
+        "idp",
+        "&error=access_denied&iss=https%3A%2F%2Fokta.example.com",
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let status =
+        callback_status_with_query(&setup.router, "idp", "&iss=https%3A%2F%2Fidp.example.com")
+            .await;
+    assert!(status.is_redirection(), "{status}");
+    assert!(setup.users.record("idp", "u1").is_some());
+}
+
+#[tokio::test]
+async fn iss_parameter_checked_when_present_even_if_not_advertised() {
+    let setup = setup(|b| b);
+    let status = callback_status_with_query(
+        &setup.router,
+        "okta",
+        "&iss=https%3A%2F%2Fgoogle.example.com",
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(setup.mock.count_for("/okta/token"), 0);
+
+    // Not advertised, so its absence is fine.
+    let status = callback_status_with_query(&setup.router, "okta", "").await;
+    assert!(status.is_redirection(), "{status}");
+}
+
+#[tokio::test]
+async fn iss_parameter_can_be_ignored() {
+    let mock = ScriptedMock::new();
+    let setup = setup(|b| {
+        b.provider(
+            Provider::new(id("idp"), iss_endpoint("idp", &mock))
+                .with_iss_parameter(IssParameter::Ignored),
+        )
+    });
+    mock.enqueue_json("/idp/token", StatusCode::OK, &token_response("idp", "u1"));
+    mock.enqueue_json("/idp/token", StatusCode::OK, &token_response("idp", "u2"));
+
+    // Advertised but absent, and present but wrong: both accepted.
+    for extra in ["", "&iss=https%3A%2F%2Fsomewhere-else.example.com"] {
+        let status = callback_status_with_query(&setup.router, "idp", extra).await;
+        assert!(status.is_redirection(), "{extra:?}: {status}");
+    }
+    assert_eq!(mock.count_for("/idp/token"), 2);
 }
 
 #[tokio::test]

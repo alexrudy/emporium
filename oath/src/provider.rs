@@ -34,7 +34,63 @@ pub struct OAuthProviderConfig {
     /// `oath::server::Provider::skip_issuer_validation`.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub skip_issuer_validation: bool,
+    /// How to treat the RFC 9207 `iss` parameter on authorization
+    /// responses. Defaults to [`IssParameter::Auto`].
+    #[serde(default, skip_serializing_if = "IssParameter::is_auto")]
+    pub iss_parameter: IssParameter,
 }
+
+/// How to treat the RFC 9207 `iss` parameter that providers may add to
+/// authorization responses (the callback's query string).
+///
+/// The parameter names the issuer that produced the response. Checking
+/// it against the provider the login was sent to defends against IdP
+/// mix-up attacks; per-provider callback routes already provide that
+/// defense, so this is a second line.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum IssParameter {
+    /// The RFC 9207 behavior: if the response has an `iss`, it must equal
+    /// the provider's issuer; if the provider advertises support
+    /// (`authorization_response_iss_parameter_supported` in discovery),
+    /// responses without one are rejected. Without a known issuer (e.g.
+    /// explicit endpoints), the parameter can't be checked and is
+    /// ignored.
+    #[default]
+    Auto,
+    /// Every response must carry an `iss` equal to the provider's issuer,
+    /// even if discovery doesn't advertise support. Requires a known
+    /// issuer.
+    Required,
+    /// Don't look at the parameter. For providers that send one that
+    /// doesn't match their issuer, or advertise support but don't send
+    /// it.
+    Ignored,
+}
+
+impl IssParameter {
+    fn is_auto(&self) -> bool {
+        *self == Self::Auto
+    }
+}
+
+impl std::str::FromStr for IssParameter {
+    type Err = InvalidIssParameter;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "auto" => Ok(Self::Auto),
+            "required" => Ok(Self::Required),
+            "ignored" => Ok(Self::Ignored),
+            _ => Err(InvalidIssParameter(s.to_owned())),
+        }
+    }
+}
+
+/// A string wasn't `auto`, `required`, or `ignored`.
+#[derive(Debug, Clone, thiserror::Error)]
+#[error("invalid iss parameter policy {0:?}: expected auto, required, or ignored")]
+pub struct InvalidIssParameter(String);
 
 impl OAuthProviderConfig {
     /// Public redirect URI sent in the authorization request: the
@@ -190,6 +246,7 @@ mod tests {
             },
             scopes: None,
             skip_issuer_validation: false,
+            iss_parameter: IssParameter::Auto,
         }
     }
 

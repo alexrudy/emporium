@@ -101,6 +101,7 @@ impl ServerConfig {
 mod tests {
     use super::*;
     use crate::origin::DefaultScheme;
+    use oath::provider::IssParameter;
 
     fn server(toml: &str) -> ServerConfig {
         config::Config::builder()
@@ -219,6 +220,7 @@ mod tests {
             client_id = "o"
             provider_name = "Okta"
             skip_issuer_validation = true
+            iss_parameter = "ignored"
             [providers.okta.endpoints]
             auth_uri = "https://okta.example.com/authorize"
             token_uri = "https://okta.example.com/token"
@@ -245,6 +247,14 @@ mod tests {
             .map(|p| p.skip_issuer_validation)
             .collect();
         assert_eq!(skips, [false, true]);
+
+        let iss: Vec<_> = cfg
+            .providers
+            .providers
+            .values()
+            .map(|p| p.iss_parameter)
+            .collect();
+        assert_eq!(iss, [IssParameter::Auto, IssParameter::Ignored]);
     }
 
     #[test]
