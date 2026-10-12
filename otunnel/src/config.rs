@@ -92,6 +92,12 @@ pub struct ProxyConfig {
 
     #[serde(default)]
     pub provider_header: Option<String>,
+
+    #[serde(default)]
+    pub forwarded_header: bool,
+
+    #[serde(default)]
+    pub x_forwarded_for: bool,
 }
 
 impl Default for ProxyConfig {
@@ -100,6 +106,8 @@ impl Default for ProxyConfig {
             allow_upgrades: false,
             identity_header: None,
             provider_header: None,
+            forwarded_header: false,
+            x_forwarded_for: false,
         }
     }
 }

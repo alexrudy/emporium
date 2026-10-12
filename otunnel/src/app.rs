@@ -3,16 +3,24 @@
 
 use axum::Router;
 use http::{HeaderName, StatusCode, Uri};
-use hyperdriver::client::{
-    conn::ConnectionManagerLayer,
-    conn::{service::ClientExecutorService, transport::tcp::TcpTransport},
+use hyperdriver::{
+    client::conn::{
+        ConnectionManagerLayer, service::ClientExecutorService, transport::tcp::TcpTransport,
+    },
+    service::OptionLayerExt,
 };
 use hyperdriver::{
     client::conn::{dns::GaiResolver, protocol::Http1Builder},
     service::Http1ChecksLayer,
 };
 use hyproxy::{
-    headers::{ConnectionHeaders, SetViaHeaderLayer, StripHopByHopLayer, via::ViaAddress},
+    headers::{
+        ConnectionHeaders, ForwardedHeaderConfig, ForwardeeMode, SetForwardedHeaderLayer,
+        SetViaHeaderLayer, StripHopByHopLayer,
+        chain::AppendHeaderRecordMode,
+        forward::{ConnectionInfoAdapterLayer, ObfuscatedName},
+        via::ViaAddress,
+    },
     upgrade::ProxyUpgradeLayer,
     uri::ProxyUriLayer,
 };
@@ -75,6 +83,22 @@ pub async fn build(
         .layer(SetViaHeaderLayer::new(
             ViaAddress::named("otunnel").expect("valid Via name"),
         ))
+        .layer(ConnectionInfoAdapterLayer::default())
+        .optional(
+            (config.proxy.forwarded_header || config.proxy.x_forwarded_for).then(|| {
+                SetForwardedHeaderLayer::new()
+                    .append_forwarded_headers(AppendHeaderRecordMode::Append)
+                    .config(ForwardedHeaderConfig {
+                        by: ForwardeeMode::Obfuscated(
+                            ObfuscatedName::new("_otunnel").expect("Valid obfuscated name"),
+                        ),
+                        r#for: ForwardeeMode::Address,
+                        host: true,
+                        proto: true,
+                    })
+                    .set_x_headers(config.proxy.x_forwarded_for)
+            }),
+        )
         .layer(ProxyUpgradeLayer::new())
         .layer(ConnectionManagerLayer::new(
             TcpTransport::new(GaiResolver::new(), config.tcp.clone().into()),

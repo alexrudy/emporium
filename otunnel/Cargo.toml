@@ -15,7 +15,7 @@ cookie.workspace = true
 eyre.workspace = true
 http.workspace = true
 hyper.workspace = true
-hyproxy = { workspace = true, features = ["upgrade"] }
+hyproxy = { workspace = true, features = ["upgrade", "hyperdriver"] }
 hyperdriver = { workspace = true}
 oath = { workspace = true, features = ["server"] }
 otool.workspace = true

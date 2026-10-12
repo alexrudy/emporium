@@ -1421,8 +1421,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e789eeaab117a87b4590056f766a5449ed6438a30c10c991d062d6888ec8dd18"
 dependencies = [
  "bytes",
+ "chateau",
  "http",
  "hyper",
+ "hyperdriver",
  "nom",
  "pin-project-lite",
  "thiserror 2.0.21",
