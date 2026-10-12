@@ -12,37 +12,37 @@ use uuid::Uuid;
 use crate::state::AppState;
 
 #[derive(Debug, Clone)]
-pub struct ProxyLayer {
+pub struct AuthenticateProxyLayer {
     state: AppState,
 }
 
-impl ProxyLayer {
+impl AuthenticateProxyLayer {
     pub fn new(state: AppState) -> Self {
         Self { state }
     }
 }
 
-impl<S> tower::Layer<S> for ProxyLayer {
-    type Service = ProxyService<S>;
+impl<S> tower::Layer<S> for AuthenticateProxyLayer {
+    type Service = AuthenticateProxyService<S>;
 
     fn layer(&self, service: S) -> Self::Service {
-        ProxyService::new(self.state.clone(), service)
+        AuthenticateProxyService::new(self.state.clone(), service)
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct ProxyService<S> {
+pub struct AuthenticateProxyService<S> {
     state: AppState,
     service: S,
 }
 
-impl<S> ProxyService<S> {
+impl<S> AuthenticateProxyService<S> {
     fn new(state: AppState, service: S) -> Self {
         Self { state, service }
     }
 }
 
-impl<S> tower::Service<Request<Body>> for ProxyService<S>
+impl<S> tower::Service<Request<Body>> for AuthenticateProxyService<S>
 where
     S: tower::Service<Request<Body>, Response = Response<Incoming>> + Clone + Send + 'static,
     S::Future: Send + 'static,
@@ -51,7 +51,7 @@ where
 
     type Error = S::Error;
 
-    type Future = ProxyFuture<S::Error>;
+    type Future = AuthenticateProxyFuture<S::Error>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
         self.service.poll_ready(cx)
@@ -62,7 +62,7 @@ where
         let connections = self.service.clone();
         let mut connections = std::mem::replace(&mut self.service, connections);
 
-        ProxyFuture::new(async move {
+        AuthenticateProxyFuture::new(async move {
             let (mut parts, body) = req.into_parts();
             let OptionalCurrentUser(user) =
                 OptionalCurrentUser::from_request_parts(&mut parts, &state.inner)
@@ -72,8 +72,6 @@ where
             if let Some(user) = user {
                 //TODO: Do we need to do host translation here?
                 tracing::trace!(%user, "Processing request");
-
-                parts.uri = state.rewrite_uri(&parts.uri);
 
                 let req = Request::from_parts(parts, body);
                 return connections
@@ -92,17 +90,17 @@ where
     }
 }
 
-pub struct ProxyFuture<E> {
+pub struct AuthenticateProxyFuture<E> {
     future: Pin<Box<dyn Future<Output = Result<Response<Body>, E>> + Send + 'static>>,
 }
 
-impl<E> fmt::Debug for ProxyFuture<E> {
+impl<E> fmt::Debug for AuthenticateProxyFuture<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "ProxyFuture")
     }
 }
 
-impl<E> ProxyFuture<E> {
+impl<E> AuthenticateProxyFuture<E> {
     pub fn new<F>(future: F) -> Self
     where
         F: Future<Output = Result<Response<Body>, E>> + Send + 'static,
@@ -113,7 +111,7 @@ impl<E> ProxyFuture<E> {
     }
 }
 
-impl<E> Future for ProxyFuture<E> {
+impl<E> Future for AuthenticateProxyFuture<E> {
     type Output = Result<Response<Body>, E>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> std::task::Poll<Self::Output> {

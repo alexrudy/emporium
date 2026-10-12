@@ -25,6 +25,8 @@ pub struct Config {
     pub sessions: SessionsConfig,
     #[serde(default)]
     pub server: ServerConfig,
+    #[serde(default)]
+    pub proxy: ProxyConfig,
 }
 
 impl Config {
@@ -72,6 +74,32 @@ impl Default for ServerConfig {
     fn default() -> Self {
         Self {
             bind_addr: SocketAddr::new(Ipv4Addr::LOCALHOST.into(), 0),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ProxyConfig {
+    /// Whether to allow HTTP upgrade requests (e.g. for WebSocket).
+    #[serde(default)]
+    pub allow_upgrades: bool,
+
+    /// The name of the header to send upstream for identity verification.
+    #[serde(default)]
+    pub identity_header: Option<String>,
+    /// The name of the header to send upstream for provider.
+
+    #[serde(default)]
+    pub provider_header: Option<String>,
+}
+
+impl Default for ProxyConfig {
+    fn default() -> Self {
+        Self {
+            allow_upgrades: false,
+            identity_header: None,
+            provider_header: None,
         }
     }
 }

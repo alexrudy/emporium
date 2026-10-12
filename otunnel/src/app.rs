@@ -2,7 +2,7 @@
 //! other request forwarded to the upstream once the user is signed in.
 
 use axum::Router;
-use http::{HeaderName, StatusCode};
+use http::{HeaderName, StatusCode, Uri};
 use hyperdriver::client::{
     conn::ConnectionManagerLayer,
     conn::{service::ClientExecutorService, transport::tcp::TcpTransport},
@@ -14,6 +14,7 @@ use hyperdriver::{
 use hyproxy::{
     headers::{ConnectionHeaders, SetViaHeaderLayer, StripHopByHopLayer, via::ViaAddress},
     upgrade::ProxyUpgradeLayer,
+    uri::ProxyUriLayer,
 };
 use otool::{build_router, router_with_chooser};
 use tower_http::{
@@ -22,11 +23,15 @@ use tower_http::{
 };
 
 use crate::config::Config;
-use crate::proxy::{ProxyLayer, ProxyRequestId};
+use crate::proxy::{AuthenticateProxyLayer, ProxyRequestId};
 use crate::state::AppState;
 
 /// Build the complete otunnel router.
-pub async fn build(state: &AppState, config: &Config) -> Result<Router, otool::BuildError> {
+pub async fn build(
+    state: &AppState,
+    config: &Config,
+    upstream: Uri,
+) -> Result<Router, otool::BuildError> {
     let middleware = tower::ServiceBuilder::new()
         .layer(CatchPanicLayer::new())
         .layer(SetSensitiveHeadersLayer::new(vec![
@@ -46,6 +51,8 @@ pub async fn build(state: &AppState, config: &Config) -> Result<Router, otool::B
         ))
         .layer(TraceLayer::new_for_http());
 
+    let parts = upstream.into_parts();
+
     let service = tower::ServiceBuilder::new()
         .layer(axum::error_handling::HandleErrorLayer::new(
             |error| async move {
@@ -56,7 +63,11 @@ pub async fn build(state: &AppState, config: &Config) -> Result<Router, otool::B
                 )
             },
         ))
-        .layer(ProxyLayer::new(state.clone()))
+        .layer(AuthenticateProxyLayer::new(state.clone()))
+        .layer(ProxyUriLayer::new(
+            parts.scheme.unwrap_or(http::uri::Scheme::HTTP),
+            parts.authority,
+        ))
         // Outside `SetViaHeaderLayer`, so only client-sent headers are
         // stripped. Connection-scoped headers go too, except what an
         // upgrade (e.g. WebSockets) needs.

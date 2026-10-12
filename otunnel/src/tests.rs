@@ -7,8 +7,7 @@ use std::time::Duration;
 use axum::Router;
 use axum::body::Body;
 use cookie::{Cookie, Key};
-use http::uri::Authority;
-use http::{HeaderMap, Request, StatusCode, header};
+use http::{HeaderMap, Request, StatusCode, Uri, header};
 use oath::server::{ProviderId, SessionData, SessionStore as _};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::net::{TcpListener, TcpStream};
@@ -34,7 +33,7 @@ impl Recorder {
 }
 
 /// An HTTP upstream that records each request and answers `upstream ok`.
-async fn upstream() -> (Authority, Recorder) {
+async fn upstream() -> (Uri, Recorder) {
     let recorder = Recorder::default();
     let seen = recorder.clone();
     let app = Router::new().fallback(move |request: Request<Body>| {
@@ -48,7 +47,9 @@ async fn upstream() -> (Authority, Recorder) {
         }
     });
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let authority = listener.local_addr().unwrap().to_string().parse().unwrap();
+    let authority = format!("http://{}", listener.local_addr().unwrap().to_string())
+        .parse()
+        .unwrap();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     (authority, recorder)
 }
@@ -79,10 +80,10 @@ fn config() -> Config {
         .unwrap()
 }
 
-async fn otunnel(upstream: Authority) -> (Router, AppState) {
+async fn otunnel(upstream: Uri) -> (Router, AppState) {
     let config = config();
-    let state = AppState::new(config.clone(), upstream).await.unwrap();
-    let router = crate::app::build(&state, &config).await.unwrap();
+    let state = AppState::new(config.clone()).await.unwrap();
+    let router = crate::app::build(&state, &config, upstream).await.unwrap();
     (router, state)
 }
 
@@ -233,9 +234,11 @@ async fn auth_routes_are_served_locally() {
 #[tokio::test]
 async fn upstream_failure_is_a_500() {
     // Bind and drop a listener to get a port nothing is listening on.
-    let closed: Authority = {
+    let closed: Uri = {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        listener.local_addr().unwrap().to_string().parse().unwrap()
+        format!("http://{}", listener.local_addr().unwrap().to_string())
+            .parse()
+            .unwrap()
     };
     let (router, state) = otunnel(closed).await;
     let cookie = session_cookie(&state).await;
@@ -255,9 +258,11 @@ async fn upstream_failure_is_a_500() {
 
 /// A raw TCP upstream that answers one upgrade request with `101` and
 /// then echoes whatever it receives.
-async fn echo_upgrade_upstream() -> Authority {
+async fn echo_upgrade_upstream() -> Uri {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let authority = listener.local_addr().unwrap().to_string().parse().unwrap();
+    let authority = format!("http://{}", listener.local_addr().unwrap().to_string())
+        .parse()
+        .unwrap();
     tokio::spawn(async move {
         let (mut stream, _) = listener.accept().await.unwrap();
         read_head(&mut stream).await;

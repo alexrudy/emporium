@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use eyre::Context as _;
+use http::{Uri, uri::Authority};
 
 use self::{config::Config, state::AppState};
 
@@ -37,12 +38,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Config::from_env()?
     };
 
-    // `Debug`, not serde: `Secret`'s serializer emits the raw value, while
-    // its `Debug` impl redacts it.
     tracing::debug!(?config, "loaded configuration");
 
-    let state = AppState::new(config.clone(), args.upstream.parse()?).await?;
-    let router = app::build(&state, &config).await?;
+    let upstream: Uri = parse_authority_or_uri(&args.upstream)?;
+    tracing::debug!(%upstream, "tunnel upstream");
+
+    let state = AppState::new(config.clone()).await?;
+    let router = app::build(&state, &config, upstream).await?;
 
     let listener = tokio::net::TcpListener::bind(config.server.bind_addr)
         .await
@@ -55,6 +57,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     axum::serve(listener, router.into_make_service()).await?;
 
     Ok(())
+}
+
+fn parse_authority_or_uri(s: &str) -> Result<Uri, Box<dyn std::error::Error>> {
+    match s.parse::<Uri>() {
+        Ok(uri) => Ok(uri),
+        Err(e) => {
+            if let Ok(authority) = s.parse::<Authority>() {
+                Ok(Uri::builder()
+                    .scheme("http")
+                    .authority(authority)
+                    .path_and_query("/")
+                    .build()
+                    .unwrap())
+            } else {
+                Err(Box::new(e))
+            }
+        }
+    }
 }
 
 fn install_tracing() {
