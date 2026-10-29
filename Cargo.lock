@@ -1416,9 +1416,9 @@ dependencies = [
 
 [[package]]
 name = "hyproxy"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4176aff0f2a09b10b95add78c678c2717dbf64d8474fee18b6598a7f78c00d16"
+checksum = "e789eeaab117a87b4590056f766a5449ed6438a30c10c991d062d6888ec8dd18"
 dependencies = [
  "bytes",
  "http",
