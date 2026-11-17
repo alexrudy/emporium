@@ -52,11 +52,11 @@ alias doc := docs
 
 # Build documentation
 docs:
-    cargo +{{ rust }} doc --all-features --no-deps
+    cargo +{{ rust }} doc --all-features --document-private-items --no-deps
 
 # Build and read documentation
 read: docs
-    cargo +{{ rust }} doc --all-features --no-deps --open
+    cargo +{{ rust }} doc --all-features --document-private-items --no-deps --open
 
 # Check support for MSRV
 msrv:

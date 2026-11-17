@@ -16,7 +16,7 @@ members = [
     "services/registry",
     "services/tailscale",
     "storage",
-    "storage-driver",
+    "storage-driver", "ovalidate",
 ]
 
 [workspace.package]

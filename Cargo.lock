@@ -2128,6 +2128,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "ovalidate"
+version = "0.10.0"
+dependencies = [
+ "api-client",
+ "bytes",
+ "http",
+ "http-body-util",
+ "hyperdriver",
+ "jaws",
+ "oath",
+ "serde_json",
+]
+
+[[package]]
 name = "ovalkey"
 version = "0.10.0"
 dependencies = [
