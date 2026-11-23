@@ -2096,6 +2096,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "otrust"
+version = "0.10.0"
+dependencies = [
+ "jaws",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "ott"
 version = "0.10.0"
 dependencies = [
@@ -2170,22 +2180,6 @@ dependencies = [
  "proc-macro2-diagnostics",
  "quote",
  "syn 2.0.119",
-]
-
-[[package]]
-name = "ovalidate"
-version = "0.10.0"
-dependencies = [
- "arc-swap",
- "bytes",
- "http",
- "http-body-util",
- "hyperdriver",
- "jaws",
- "oath",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
 ]
 
 [[package]]
