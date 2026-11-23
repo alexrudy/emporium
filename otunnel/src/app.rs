@@ -83,7 +83,7 @@ pub async fn build(
         .layer(SetViaHeaderLayer::new(
             ViaAddress::named("otunnel").expect("valid Via name"),
         ))
-        .layer(ConnectionInfoAdapterLayer::default())
+        .layer(ConnectionInfoAdapterLayer)
         .optional(
             (config.proxy.forwarded_header || config.proxy.x_forwarded_for).then(|| {
                 SetForwardedHeaderLayer::new()

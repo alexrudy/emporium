@@ -92,9 +92,12 @@ pub struct OIDCValidator {
 impl OIDCValidator {
     async fn update_keys(&self) -> Result<(), OIDCError> {
         let now = Instant::now();
-        if self.keys.load().as_ref().map_or(false, |keys| {
-            now.duration_since(keys.fetched) < self.cache_time
-        }) {
+        if self
+            .keys
+            .load()
+            .as_ref()
+            .is_some_and(|keys| now.duration_since(keys.fetched) < self.cache_time)
+        {
             return Ok(());
         }
 
@@ -138,14 +141,14 @@ impl OIDCValidator {
         }
 
         if let Some(kid) = token.header().key_id() {
-            if let Some(key) = self.keys.load().as_ref().and_then(|k| k.keyset.get(kid)) {
-                if let Ok(verifier) = key.clone().into_verifying_key(algorithm) {
-                    return token.verify(&verifier).map_err(|error| {
-                        OIDCError::VerificationFailed {
-                            source: error.kind.into(),
-                        }
+            if let Some(key) = self.keys.load().as_ref().and_then(|k| k.keyset.get(kid))
+                && let Ok(verifier) = key.clone().into_verifying_key(algorithm)
+            {
+                return token
+                    .verify(&verifier)
+                    .map_err(|error| OIDCError::VerificationFailed {
+                        source: error.kind.into(),
                     });
-                }
             }
             return Err(OIDCError::VerificationFailed {
                 source: "Unable to find matching key by kid".into(),
@@ -154,17 +157,17 @@ impl OIDCValidator {
 
         if let Some(keys) = self.keys.load().as_ref().map(|k| &k.keyset) {
             for key in keys.iter() {
-                if let Ok(verifier) = key.key.clone().into_verifying_key(algorithm) {
-                    if let Ok(token) = token.clone().verify(&verifier) {
-                        return Ok(token);
-                    }
+                if let Ok(verifier) = key.key.clone().into_verifying_key(algorithm)
+                    && let Ok(token) = token.clone().verify(&verifier)
+                {
+                    return Ok(token);
                 }
             }
         }
 
-        return Err(OIDCError::VerificationFailed {
+        Err(OIDCError::VerificationFailed {
             source: "Unable verify token with any key".into(),
-        });
+        })
     }
 
     /// Validates the given parameters against the expected parameters.
@@ -184,7 +187,7 @@ impl OIDCValidator {
                 source: TokenParseError::MissingPayload,
             });
         };
-        Ok(self.validate_parameters(&parameters)?)
+        Ok(self.validate_parameters(parameters)?)
     }
 }
 
@@ -241,7 +244,7 @@ impl ExpectedParameter {
     fn matches(&self, value: &ScalarValue) -> bool {
         match self {
             ExpectedParameter::Contains(substr) => {
-                value.as_str().map_or(false, |s| s.contains(substr))
+                value.as_str().is_some_and(|s| s.contains(substr))
             }
             ExpectedParameter::Equals(expected) => expected == value,
         }

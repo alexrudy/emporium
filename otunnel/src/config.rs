@@ -80,6 +80,7 @@ impl Default for ServerConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 pub struct ProxyConfig {
     /// Whether to allow HTTP upgrade requests (e.g. for WebSocket).
     #[serde(default)]
@@ -98,18 +99,6 @@ pub struct ProxyConfig {
 
     #[serde(default)]
     pub x_forwarded_for: bool,
-}
-
-impl Default for ProxyConfig {
-    fn default() -> Self {
-        Self {
-            allow_upgrades: false,
-            identity_header: None,
-            provider_header: None,
-            forwarded_header: false,
-            x_forwarded_for: false,
-        }
-    }
 }
 
 #[cfg(test)]
