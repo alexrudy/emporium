@@ -4,7 +4,7 @@ use http::{Uri, uri::InvalidUri};
 use secret::Secret;
 use serde::{Deserialize, Serialize};
 
-use crate::{Error, ProviderMetadata, ScopeSet, TokenEndpoint};
+use crate::{Error, ProviderMetadata, ScopeSet, TokenEndpoint, discovery::fetch_jwks};
 
 /// Configuration for an OAuth provider endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -12,7 +12,7 @@ pub struct OAuthProviderConfig {
     /// Public origin the provider's redirect URI lives under.
     /// Combined with the router's callback path (e.g. `/auth/callback`)
     /// to form the redirect URI sent in the authorization request.
-    #[serde(default, with = "serde_uri_opt")]
+    #[serde(default, with = "serde_uri::opt")]
     pub external_origin: Option<Uri>,
     /// Display name shown on the "Sign in with X" button.
     pub provider_name: String,
@@ -27,6 +27,15 @@ pub struct OAuthProviderConfig {
     /// default scopes.
     #[serde(default)]
     pub scopes: Option<ScopeSet>,
+
+    /// Whether to validate ID tokens and provide them with token sets
+    #[serde(
+        default,
+        deserialize_with = "bool_or_string::deserialize",
+        skip_serializing_if = "std::ops::Not::not"
+    )]
+    pub validate_id_tokens: bool,
+
     /// Don't check ID tokens' `iss` claim against the issuer from
     /// discovery (`aud` is still checked). Only for providers whose
     /// discovery document doesn't state the exact issuer, e.g. Microsoft
@@ -134,9 +143,15 @@ impl OAuthProviderConfig {
             ProviderEndpoints::Explicit {
                 auth_uri,
                 token_uri,
-            } => builder
-                .auth_uri(auth_uri.clone())
-                .token_uri(token_uri.clone()),
+                jwks_uri,
+            } => if let Some(jwks) = jwks_uri {
+                let keys = fetch_jwks(jwks.clone()).await?;
+                builder.keys(keys)
+            } else {
+                builder
+            }
+            .auth_uri(auth_uri.clone())
+            .token_uri(token_uri.clone()),
             ProviderEndpoints::Discover { issuer } => {
                 let well_known = ProviderMetadata::well_known_url(issuer);
                 tracing::info!(%issuer, %well_known, "fetching OIDC discovery metadata");
@@ -146,7 +161,18 @@ impl OAuthProviderConfig {
                     authorization_endpoint = ?metadata.authorization_endpoint,
                     "discovery succeeded",
                 );
-                builder.from_metadata(&metadata)?
+
+                let keys = if self.validate_id_tokens {
+                    Some(metadata.fetch_keys().await?)
+                } else {
+                    None
+                };
+
+                let mut builder = builder.from_metadata(&metadata)?;
+                if let Some(keys) = keys {
+                    builder = builder.keys(keys);
+                }
+                builder
             }
         };
 
@@ -176,6 +202,9 @@ pub enum ProviderEndpoints {
         /// `token_endpoint`.
         #[serde(with = "serde_uri")]
         token_uri: Uri,
+        /// `jwks_uri`
+        #[serde(default, with = "serde_uri::opt")]
+        jwks_uri: Option<Uri>,
     },
 }
 
@@ -196,9 +225,14 @@ impl ProviderEndpoints {
             (None, Some(auth_raw), Some(token_raw)) => {
                 let auth_uri = parse_configured_uri(&auth_raw, "OAUTH_AUTH_URI")?;
                 let token_uri = parse_configured_uri(&token_raw, "OAUTH_TOKEN_URI")?;
+
+                let jwks_uri = get("OAUTH_JWKS_URI")
+                    .and_then(|raw| parse_configured_uri(&raw, "OAUTH_JWKS_URI").ok());
+
                 Ok(ProviderEndpoints::Explicit {
                     auth_uri,
                     token_uri,
+                    jwks_uri,
                 })
             }
             _ => Err(ProviderEndpointError::NotConfigured),
@@ -254,6 +288,7 @@ mod tests {
                 issuer: "https://issuer.example.com".parse().unwrap(),
             },
             scopes: None,
+            validate_id_tokens: false,
             skip_issuer_validation: false,
             iss_parameter: IssParameter::Auto,
         }
@@ -318,7 +353,7 @@ mod tests {
     }
 }
 
-mod serde_uri {
+pub(crate) mod serde_uri {
     use http::Uri;
     use serde::de::Visitor;
 
@@ -351,6 +386,53 @@ mod serde_uri {
         S: serde::Serializer,
     {
         serializer.serialize_str(&uri.to_string())
+    }
+
+    pub(crate) mod opt {
+        use http::Uri;
+        use serde::de::Visitor;
+
+        pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Uri>, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            struct UriVisitor;
+
+            impl<'de> Visitor<'de> for UriVisitor {
+                type Value = Option<Uri>;
+                fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                    write!(formatter, "a string URI")
+                }
+
+                fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+                where
+                    E: serde::de::Error,
+                {
+                    v.parse::<Uri>()
+                        .map_err(|source| E::custom(format!("invalid URI: {source}")))
+                        .map(Some)
+                }
+
+                fn visit_none<E>(self) -> Result<Self::Value, E>
+                where
+                    E: serde::de::Error,
+                {
+                    Ok(None)
+                }
+            }
+
+            deserializer.deserialize_str(UriVisitor)
+        }
+
+        pub fn serialize<S>(uri: &Option<Uri>, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer,
+        {
+            match uri.as_ref() {
+                Some(uri) => serializer.serialize_str(&uri.to_string()),
+                None => serializer.serialize_none(),
+            }
+        }
     }
 }
 
@@ -404,52 +486,5 @@ mod bool_or_string {
         }
 
         deserializer.deserialize_any(BoolVisitor)
-    }
-}
-
-pub(crate) mod serde_uri_opt {
-    use http::Uri;
-    use serde::de::Visitor;
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Uri>, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        struct UriVisitor;
-
-        impl<'de> Visitor<'de> for UriVisitor {
-            type Value = Option<Uri>;
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                write!(formatter, "a string URI")
-            }
-
-            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                v.parse::<Uri>()
-                    .map_err(|source| E::custom(format!("invalid URI: {source}")))
-                    .map(Some)
-            }
-
-            fn visit_none<E>(self) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                Ok(None)
-            }
-        }
-
-        deserializer.deserialize_str(UriVisitor)
-    }
-
-    pub fn serialize<S>(uri: &Option<Uri>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        match uri.as_ref() {
-            Some(uri) => serializer.serialize_str(&uri.to_string()),
-            None => serializer.serialize_none(),
-        }
     }
 }

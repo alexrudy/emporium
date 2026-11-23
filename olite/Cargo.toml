@@ -8,7 +8,7 @@ description = "SQLite-backed session and user stores for oath's server"
 
 [dependencies]
 async-trait.workspace = true
-chrono.workspace = true
+jiff.workspace = true
 oath = { workspace = true, features = ["server"] }
 parking_lot.workspace = true
 rusqlite.workspace = true

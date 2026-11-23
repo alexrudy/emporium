@@ -4,7 +4,7 @@ members = [
     "api-client",
     "bookshelf",
     "echocache", "formdata",
-    "oath", "ogateway", "olite", "otool", "ovalkey",
+    "oath", "ogateway", "olite", "otool", "ovalkey", "otrust",
     "ott",
     "otunnel",
     "secret",
@@ -16,7 +16,7 @@ members = [
     "services/registry",
     "services/tailscale",
     "storage",
-    "storage-driver", "ovalidate",
+    "storage-driver",
 ]
 
 [workspace.package]
@@ -49,7 +49,8 @@ http-body = "1"
 http-body-util = "*"
 hyper = "1"
 hyproxy = "~0.13"
-jaws = { version = "1.0.3", features = ["rand", "spki", "der"] }
+jaws = { version = "3.0.0-rc1", features = ["rand", "spki", "der"] }
+jiff = { version = "1"}
 indoc = "2"
 minijinja = { version = "2", features = ["loader"] }
 mime = "0.3"

@@ -7,11 +7,10 @@
 
 use std::convert::Infallible;
 use std::sync::Arc;
-use std::time::Duration as StdDuration;
+use std::time::Duration;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use rand::TryRng as _;
 use rand::rngs::SysRng;
@@ -117,7 +116,7 @@ pub trait SessionStore: Send + Sync + 'static {
 #[derive(Debug)]
 struct Entry {
     data: SessionData,
-    expires_at: DateTime<Utc>,
+    expires_at: jiff::Timestamp,
 }
 
 /// Default in-process [`SessionStore`] keyed by [`SessionId`].
@@ -130,18 +129,18 @@ struct Entry {
 #[derive(Debug, Clone)]
 pub struct InMemorySessionStore {
     sessions: Arc<DashMap<SessionId, Entry>>,
-    ttl: StdDuration,
+    ttl: Duration,
 }
 
 impl Default for InMemorySessionStore {
     fn default() -> Self {
-        Self::new(StdDuration::from_secs(60 * 60 * 24 * 30))
+        Self::new(Duration::from_secs(60 * 60 * 24 * 30))
     }
 }
 
 impl InMemorySessionStore {
     /// Create a new in-memory store. Sessions expire after `ttl`.
-    pub fn new(ttl: StdDuration) -> Self {
+    pub fn new(ttl: Duration) -> Self {
         Self {
             sessions: Arc::new(DashMap::new()),
             ttl,
@@ -157,15 +156,14 @@ impl SessionStore for InMemorySessionStore {
         let id = SessionId::generate();
         let entry = Entry {
             data,
-            expires_at: Utc::now()
-                + chrono::Duration::from_std(self.ttl).unwrap_or(chrono::Duration::days(30)),
+            expires_at: jiff::Timestamp::now() + self.ttl,
         };
         self.sessions.insert(id.clone(), entry);
         Ok(id)
     }
 
     async fn get(&self, id: &SessionId) -> Result<Option<SessionData>, Self::Error> {
-        let now = Utc::now();
+        let now = jiff::Timestamp::now();
         // Lazy eviction: drop expired entries when we see them.
         if let Some(entry) = self.sessions.get(id) {
             if entry.expires_at < now {
@@ -227,7 +225,7 @@ mod tests {
 
     #[tokio::test]
     async fn in_memory_expires_after_ttl() {
-        let store = InMemorySessionStore::new(StdDuration::from_millis(0));
+        let store = InMemorySessionStore::new(Duration::from_millis(0));
         let id = store
             .create(SessionData::Authenticated {
                 provider: ProviderId::default(),
@@ -236,7 +234,7 @@ mod tests {
             .await
             .unwrap();
         // Any subsequent get sees a stale entry and returns None.
-        tokio::time::sleep(StdDuration::from_millis(5)).await;
+        tokio::time::sleep(Duration::from_millis(5)).await;
         assert!(store.get(&id).await.unwrap().is_none());
     }
 

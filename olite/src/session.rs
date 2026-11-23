@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use chrono::Utc;
+use jiff::Timestamp;
 use oath::server::{SessionData, SessionId, SessionStore};
 use rusqlite::{OptionalExtension as _, params};
 
@@ -28,7 +28,7 @@ impl SqliteSessionStore {
 
     /// Deletes every expired session, returning how many were removed.
     pub async fn prune_expired(&self) -> Result<usize, Error> {
-        let now = Utc::now().timestamp_millis();
+        let now = Timestamp::now().as_millisecond();
         self.db
             .call(move |conn| {
                 Ok(conn.execute(
@@ -40,8 +40,7 @@ impl SqliteSessionStore {
     }
 
     fn expires_at(&self) -> i64 {
-        let ttl = chrono::Duration::from_std(self.ttl).unwrap_or(chrono::Duration::days(30));
-        (Utc::now() + ttl).timestamp_millis()
+        (Timestamp::now() + self.ttl).as_millisecond()
     }
 }
 
@@ -68,7 +67,7 @@ impl SessionStore for SqliteSessionStore {
 
     async fn get(&self, id: &SessionId) -> Result<Option<SessionData>, Error> {
         let key = id.as_str().to_owned();
-        let now = Utc::now().timestamp_millis();
+        let now = Timestamp::now().as_millisecond();
         let json = self
             .db
             .call(move |conn| {

@@ -269,8 +269,10 @@ impl Provider {
 
         let Some(expected) = self.endpoint.issuer() else {
             return if self.iss_parameter == IssParameter::Required {
+                tracing::trace!("Endpoint is missing issuer when required");
                 Err(IssParameterError::UnknownIssuer)
             } else {
+                tracing::trace!("Endpoint is missing issuer, ignoring");
                 Ok(())
             };
         };

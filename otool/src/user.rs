@@ -7,7 +7,8 @@ use std::fmt;
 use std::sync::Arc;
 
 use dashmap::DashMap;
-use oath::server::{IdClaims, Identity, IdentityResolver, ProviderId, UserStore, parse_id_token};
+use oath::identity::IdClaims;
+use oath::server::{Identity, IdentityError, IdentityResolver, ProviderId, UserStore};
 use serde::{Deserialize, Serialize};
 
 /// An authenticated user.
@@ -124,7 +125,7 @@ impl UserStore for InMemoryUserStore {
 /// user store.
 pub fn identity_resolver() -> IdentityResolver<UserProfile> {
     IdentityResolver::new(|tokens| async move {
-        let claims = parse_id_token(&tokens)?;
+        let claims = tokens.claims.ok_or(IdentityError::MissingIdToken)?;
         Ok(Identity {
             data: UserProfile::from_claims(&claims),
             username: claims.sub,

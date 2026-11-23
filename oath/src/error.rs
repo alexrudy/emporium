@@ -8,6 +8,8 @@ use std::fmt;
 
 use serde::Deserialize;
 
+pub use crate::identity::OIDCTokenError;
+
 /// Errors produced by the `oath` crate.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -17,12 +19,14 @@ pub enum Error {
 
     /// The server returned a non-success status without a recognizable
     /// OAuth2 error body.
-    #[error("OAuth2 endpoint returned HTTP {status}: {body}")]
+    #[error("OAuth2 endpoint {url} returned HTTP {status}: {body}")]
     BadResponse {
         /// HTTP status code returned by the server.
         status: http::StatusCode,
         /// Raw response body, included for debugging.
         body: String,
+        /// Target URL of the request, included for debugging.
+        url: String,
     },
 
     /// The server returned an OAuth2 error response per RFC 6749 §5.2.
@@ -38,6 +42,18 @@ pub enum Error {
         source: serde_json::Error,
         /// Raw response body that failed to deserialize.
         body: String,
+        /// URL of the request that failed, included for debugging.
+        url: String,
+    },
+
+    /// The URL provided is not valid
+    #[error("invalid URL for {field}: {raw}")]
+    InvalidUrl {
+        /// The raw URL string that was invalid.
+        raw: String,
+
+        /// The name of the field that contained the invalid URL.
+        field: &'static str,
     },
 
     /// The access token has expired and no refresh path is available
@@ -56,6 +72,10 @@ pub enum Error {
     #[error("TokenEndpoint has no device_uri configured")]
     MissingDeviceUri,
 
+    /// The token endpoint was built without the JWK Set uri
+    #[error("TokenEndpoint has no jwks_uri configured")]
+    MissingJwksUri,
+
     /// Polling for a device-flow access token gave up before the user
     /// completed authorization. Returned when the server's stated
     /// `expires_in` elapses without a success or an explicit error.
@@ -72,6 +92,10 @@ pub enum Error {
     /// joined to the callback path) is not a valid URI.
     #[error("invalid redirect URI: {0}")]
     InvalidRedirectUri(#[from] http::uri::InvalidUri),
+
+    /// An error occurred while validating the ID token.
+    #[error("ID token error: {0}")]
+    IDToken(#[from] OIDCTokenError),
 }
 
 /// An OAuth2 error response body (RFC 6749 §5.2).

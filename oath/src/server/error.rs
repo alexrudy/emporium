@@ -7,6 +7,8 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use thiserror::Error;
 
+use crate::identity::OIDCTokenError;
+
 /// Boxed error from a [`crate::server::SessionStore`],
 /// [`crate::server::UserStore`], or identity resolver.
 pub type BoxError = Box<dyn StdError + Send + Sync + 'static>;
@@ -65,7 +67,7 @@ pub enum ServerError {
     /// The provider's `id_token` was issued by someone else, or for a
     /// different client.
     #[error("id_token rejected: {0}")]
-    InvalidIdToken(#[source] super::IdentityError),
+    InvalidIdToken(#[source] OIDCTokenError),
 
     /// The authorization response failed the RFC 9207 `iss` check.
     #[error(transparent)]

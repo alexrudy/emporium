@@ -8,8 +8,8 @@
 
 use std::collections::BTreeMap;
 
-use chrono::{DateTime, Utc};
-use oath::server::{Identity, IdentityResolver, ProviderId, parse_id_token};
+use jiff::Timestamp;
+use oath::server::{Identity, IdentityError, IdentityResolver, ProviderId};
 use serde::{Deserialize, Serialize};
 
 /// What ott persists for each user.
@@ -32,9 +32,9 @@ pub struct AppUser {
     /// missing.
     pub display_name: Option<String>,
     /// Time we first issued a session for this user.
-    pub created_at: DateTime<Utc>,
+    pub created_at: Timestamp,
     /// Time of the most recent successful login.
-    pub last_login_at: DateTime<Utc>,
+    pub last_login_at: Timestamp,
     /// Any extra claims the provider returned.
     #[serde(default, flatten)]
     pub extra: BTreeMap<String, serde_json::Value>,
@@ -49,8 +49,8 @@ pub struct AppUser {
 /// polish: read the existing record first and preserve `created_at`.
 pub fn identity_resolver() -> IdentityResolver<AppUser> {
     IdentityResolver::with_provider(|provider: ProviderId, tokens| async move {
-        let claims = parse_id_token(&tokens)?;
-        let now = Utc::now();
+        let claims = tokens.claims.ok_or(IdentityError::MissingIdToken)?;
+        let now = Timestamp::now();
         let display_name = claims
             .name
             .clone()

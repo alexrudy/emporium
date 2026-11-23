@@ -12,16 +12,17 @@ use std::sync::{Arc, Mutex};
 
 use axum::Router;
 use axum::body::Body;
-use base64::Engine as _;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use common::ScriptedMock;
 use cookie::Key;
 use http::{HeaderName, Request, StatusCode, Uri, header};
+use jaws::Token;
+use jaws::crypto::rsa::Generate as _;
+use jaws::crypto::signature::Keypair;
+use jaws::key::{Identified, JwkSet, PublicWebKey, SigningWebKey};
 use oath::TokenEndpoint;
 use oath::server::{
     Identity, IdentityResolver, InMemorySessionStore, IssParameter, OAuth2Router, Provider,
     ProviderId, SessionData, SessionId, SessionStore as _, TrustedHeader, UserStore,
-    parse_id_token,
 };
 use secret::Secret;
 use tower::ServiceExt as _;
@@ -71,11 +72,25 @@ impl UserStore for MemoryUsers {
     }
 }
 
+fn signing_key() -> SigningWebKey {
+    jaws::crypto::rsa::pkcs1v15::SigningKey::<jaws::crypto::sha2::Sha256>::from(
+        jaws::crypto::rsa::PrivateKey::generate(),
+    )
+    .into()
+}
+
+fn keyset(key: &SigningWebKey) -> JwkSet<PublicWebKey> {
+    let public_key = PublicWebKey::try_from(key.verifying_key()).unwrap();
+    JwkSet::from(vec![
+        Identified::unidentified(public_key).with_id("key-id".into()),
+    ])
+}
+
 /// Username is the bare `sub`; the record notes which provider the
 /// resolver was told about.
 fn resolver() -> IdentityResolver<String> {
-    IdentityResolver::with_provider(|provider: ProviderId, tokens| async move {
-        let claims = parse_id_token(&tokens)?;
+    IdentityResolver::with_provider(move |provider: ProviderId, tokens| async move {
+        let claims = tokens.claims.expect("ID Claims were validated");
         Ok(Identity {
             data: format!("{provider}:{}", claims.sub),
             username: claims.sub,
@@ -85,29 +100,35 @@ fn resolver() -> IdentityResolver<String> {
 
 /// A token response for provider `name`, whose id_token carries that
 /// provider's issuer and client id.
-fn token_response(name: &str, sub: &str) -> Vec<u8> {
+fn token_response(name: &str, sub: &str, key: &SigningWebKey) -> Vec<u8> {
     token_response_with(
         sub,
         &format!("https://{name}.example.com"),
         &format!("{name}-client"),
+        key,
     )
 }
 
-fn token_response_with(sub: &str, iss: &str, aud: &str) -> Vec<u8> {
-    let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"RS256","typ":"JWT"}"#);
-    let payload = URL_SAFE_NO_PAD
-        .encode(serde_json::json!({ "sub": sub, "iss": iss, "aud": aud }).to_string());
-    let sig = URL_SAFE_NO_PAD.encode(b"sig");
+fn token(sub: &str, iss: &str, aud: &str, key: &SigningWebKey) -> String {
+    let payload = serde_json::json!({ "sub": sub, "iss": iss, "aud": aud });
+    let mut token = Token::compact((), payload);
+    *token.header_mut().key_id() = Some("key-id".into());
+
+    token.sign(key).unwrap().rendered().unwrap()
+}
+
+fn token_response_with(sub: &str, iss: &str, aud: &str, key: &SigningWebKey) -> Vec<u8> {
+    let token = token(sub, iss, aud, key);
     serde_json::to_vec(&serde_json::json!({
         "access_token": "atok",
         "token_type": "Bearer",
         "expires_in": 3600,
-        "id_token": format!("{header}.{payload}.{sig}"),
+        "id_token": token,
     }))
     .unwrap()
 }
 
-fn endpoint(name: &str, mock: &ScriptedMock) -> TokenEndpoint {
+fn endpoint(name: &str, mock: &ScriptedMock, key: &SigningWebKey) -> TokenEndpoint {
     TokenEndpoint::builder()
         .client_id(format!("{name}-client"))
         .client_secret(Secret::from("secret"))
@@ -127,6 +148,7 @@ fn endpoint(name: &str, mock: &ScriptedMock) -> TokenEndpoint {
                 .unwrap(),
         )
         .issuer(format!("https://{name}.example.com"))
+        .keys(keyset(key))
         .transport(mock.clone())
         .build()
         .unwrap()
@@ -147,17 +169,18 @@ fn setup(
     configure: impl FnOnce(
         OAuth2Router<InMemorySessionStore, MemoryUsers>,
     ) -> OAuth2Router<InMemorySessionStore, MemoryUsers>,
+    key: &SigningWebKey,
 ) -> Setup {
     let mock = ScriptedMock::new();
     mock.enqueue_json(
         "/google/token",
         StatusCode::OK,
-        &token_response("google", "g-123"),
+        &token_response("google", "g-123", key),
     );
     mock.enqueue_json(
         "/okta/token",
         StatusCode::OK,
-        &token_response("okta", "o-456"),
+        &token_response("okta", "o-456", key),
     );
 
     let users = MemoryUsers::default();
@@ -170,9 +193,9 @@ fn setup(
         identity,
         Key::generate(),
     )
-    .provider(Provider::new(id("google"), endpoint("google", &mock)))
+    .provider(Provider::new(id("google"), endpoint("google", &mock, key)))
     .provider(
-        Provider::new(id("okta"), endpoint("okta", &mock))
+        Provider::new(id("okta"), endpoint("okta", &mock, key))
             .with_scopes("openid groups".parse().unwrap()),
     )
     .secure_cookies(false);
@@ -251,7 +274,8 @@ fn query(url: &url::Url, key: &str) -> Option<String> {
 
 #[tokio::test]
 async fn each_provider_has_its_own_login_and_callback() {
-    let setup = setup(|b| b);
+    let key = signing_key();
+    let setup = setup(|b| b, &key);
 
     let (google_url, _) = begin_login(&setup.router, "/auth/google/login").await;
     assert_eq!(google_url.host_str(), Some("google.example.com"));
@@ -301,17 +325,18 @@ async fn each_provider_has_its_own_login_and_callback() {
 
 #[tokio::test]
 async fn same_sub_at_two_providers_is_two_users() {
-    let setup = setup(|b| b);
+    let key = signing_key();
+    let setup = setup(|b| b, &key);
     // Both providers issue the same `sub`.
     setup.mock.enqueue_json(
         "/google/token",
         StatusCode::OK,
-        &token_response("google", "same"),
+        &token_response("google", "same", &key),
     );
     setup.mock.enqueue_json(
         "/okta/token",
         StatusCode::OK,
-        &token_response("okta", "same"),
+        &token_response("okta", "same", &key),
     );
 
     // `setup` queued one response per provider (g-123 / o-456) ahead of
@@ -339,13 +364,14 @@ async fn callback_status_for_token(
     iss: &str,
     aud: &str,
 ) -> (StatusCode, MemoryUsers) {
-    let setup = setup(configure);
+    let key = signing_key();
+    let setup = setup(configure, &key);
     // Use up okta's default response so ours is next.
     complete_login(&setup.router, "okta").await;
     setup.mock.enqueue_json(
         "/okta/token",
         StatusCode::OK,
-        &token_response_with("intruder", iss, aud),
+        &token_response_with("intruder", iss, aud, &key),
     );
 
     let (url, preauth) = begin_login(&setup.router, "/auth/okta/login").await;
@@ -377,12 +403,15 @@ async fn id_token_for_another_client_is_rejected() {
 
 #[tokio::test]
 async fn issuer_check_can_be_skipped_but_audience_still_applies() {
+    let key = signing_key();
     let mock = ScriptedMock::new();
     let skip = |b: OAuth2Router<InMemorySessionStore, MemoryUsers>| {
-        b.provider(Provider::new(id("entra"), endpoint("entra", &mock)).skip_issuer_validation())
+        b.provider(
+            Provider::new(id("entra"), endpoint("entra", &mock, &key)).skip_issuer_validation(),
+        )
     };
 
-    let setup = setup(skip);
+    let setup = setup(skip, &key);
     mock.enqueue_json(
         "/entra/token",
         StatusCode::OK,
@@ -390,6 +419,7 @@ async fn issuer_check_can_be_skipped_but_audience_still_applies() {
             "u1",
             "https://login.example.com/tenant-a/v2.0",
             "entra-client",
+            &key,
         ),
     );
     complete_login(&setup.router, "entra").await;
@@ -402,6 +432,7 @@ async fn issuer_check_can_be_skipped_but_audience_still_applies() {
             "u2",
             "https://login.example.com/tenant-a/v2.0",
             "other-client",
+            &key,
         ),
     );
     let (url, preauth) = begin_login(&setup.router, "/auth/entra/login").await;
@@ -417,7 +448,7 @@ async fn issuer_check_can_be_skipped_but_audience_still_applies() {
 }
 
 /// An endpoint for `name` that advertises RFC 9207 support.
-fn iss_endpoint(name: &str, mock: &ScriptedMock) -> TokenEndpoint {
+fn iss_endpoint(name: &str, mock: &ScriptedMock, key: &SigningWebKey) -> TokenEndpoint {
     TokenEndpoint::builder()
         .client_id(format!("{name}-client"))
         .client_secret(Secret::from("secret"))
@@ -438,6 +469,7 @@ fn iss_endpoint(name: &str, mock: &ScriptedMock) -> TokenEndpoint {
         )
         .issuer(format!("https://{name}.example.com"))
         .authorization_response_iss_parameter_supported(true)
+        .keys(keyset(key))
         .transport(mock.clone())
         .build()
         .unwrap()
@@ -459,9 +491,17 @@ async fn callback_status_with_query(router: &Router, provider: &str, extra: &str
 
 #[tokio::test]
 async fn iss_parameter_is_enforced_when_advertised() {
+    let key = signing_key();
     let mock = ScriptedMock::new();
-    let setup = setup(|b| b.provider(Provider::new(id("idp"), iss_endpoint("idp", &mock))));
-    mock.enqueue_json("/idp/token", StatusCode::OK, &token_response("idp", "u1"));
+    let setup = setup(
+        |b| b.provider(Provider::new(id("idp"), iss_endpoint("idp", &mock, &key))),
+        &key,
+    );
+    mock.enqueue_json(
+        "/idp/token",
+        StatusCode::OK,
+        &token_response("idp", "u1", &key),
+    );
 
     // Missing, or from another issuer: rejected before the code exchange.
     for extra in ["", "&iss=https%3A%2F%2Fokta.example.com"] {
@@ -488,7 +528,8 @@ async fn iss_parameter_is_enforced_when_advertised() {
 
 #[tokio::test]
 async fn iss_parameter_checked_when_present_even_if_not_advertised() {
-    let setup = setup(|b| b);
+    let key = signing_key();
+    let setup = setup(|b| b, &key);
     let status = callback_status_with_query(
         &setup.router,
         "okta",
@@ -505,15 +546,27 @@ async fn iss_parameter_checked_when_present_even_if_not_advertised() {
 
 #[tokio::test]
 async fn iss_parameter_can_be_ignored() {
+    let key = signing_key();
     let mock = ScriptedMock::new();
-    let setup = setup(|b| {
-        b.provider(
-            Provider::new(id("idp"), iss_endpoint("idp", &mock))
-                .with_iss_parameter(IssParameter::Ignored),
-        )
-    });
-    mock.enqueue_json("/idp/token", StatusCode::OK, &token_response("idp", "u1"));
-    mock.enqueue_json("/idp/token", StatusCode::OK, &token_response("idp", "u2"));
+    let setup = setup(
+        |b| {
+            b.provider(
+                Provider::new(id("idp"), iss_endpoint("idp", &mock, &key))
+                    .with_iss_parameter(IssParameter::Ignored),
+            )
+        },
+        &key,
+    );
+    mock.enqueue_json(
+        "/idp/token",
+        StatusCode::OK,
+        &token_response("idp", "u1", &key),
+    );
+    mock.enqueue_json(
+        "/idp/token",
+        StatusCode::OK,
+        &token_response("idp", "u2", &key),
+    );
 
     // Advertised but absent, and present but wrong: both accepted.
     for extra in ["", "&iss=https%3A%2F%2Fsomewhere-else.example.com"] {
@@ -525,7 +578,8 @@ async fn iss_parameter_can_be_ignored() {
 
 #[tokio::test]
 async fn callback_on_wrong_provider_route_is_rejected() {
-    let setup = setup(|b| b);
+    let key = signing_key();
+    let setup = setup(|b| b, &key);
 
     let (google_url, preauth) = begin_login(&setup.router, "/auth/google/login").await;
     let state = query(&google_url, "state").unwrap();
@@ -554,14 +608,16 @@ async fn callback_on_wrong_provider_route_is_rejected() {
 
 #[tokio::test]
 async fn default_login_is_unrouted_without_a_default() {
-    let setup = setup(|b| b);
+    let key = signing_key();
+    let setup = setup(|b| b, &key);
     let resp = get(&setup.router, "/auth/login", None).await;
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
 async fn default_login_uses_explicit_default_provider() {
-    let setup = setup(|b| b.default_provider(id("okta")));
+    let key = signing_key();
+    let setup = setup(|b| b.default_provider(id("okta")), &key);
     let (url, preauth) = begin_login(&setup.router, "/auth/login").await;
     assert_eq!(url.host_str(), Some("okta.example.com"));
 
@@ -578,23 +634,24 @@ async fn default_login_uses_explicit_default_provider() {
 
 #[tokio::test]
 async fn new_keeps_root_paths_alongside_added_providers() {
+    let key = signing_key();
     let mock = ScriptedMock::new();
     mock.enqueue_json(
         "/legacy/token",
         StatusCode::OK,
-        &token_response("legacy", "l-1"),
+        &token_response("legacy", "l-1", &key),
     );
 
     let users = MemoryUsers::default();
     let identity = resolver();
     let router: Router = OAuth2Router::<_, _, Uri>::new(
-        endpoint("legacy", &mock),
+        endpoint("legacy", &mock, &key),
         InMemorySessionStore::default(),
         users.clone(),
         identity,
         Key::generate(),
     )
-    .provider(Provider::new(id("google"), endpoint("google", &mock)))
+    .provider(Provider::new(id("google"), endpoint("google", &mock, &key)))
     .secure_cookies(false)
     .into_router();
 
@@ -618,17 +675,17 @@ async fn new_keeps_root_paths_alongside_added_providers() {
     assert_eq!(url.host_str(), Some("google.example.com"));
 }
 
-fn trusted_header_router(mock: &ScriptedMock, users: MemoryUsers) -> Router {
+fn trusted_header_router(mock: &ScriptedMock, users: MemoryUsers, key: &SigningWebKey) -> Router {
     let identity = resolver();
     OAuth2Router::<_, _, TrustedHeader>::new(
-        endpoint("legacy", mock),
+        endpoint("legacy", mock, key),
         InMemorySessionStore::default(),
         users,
         identity,
         Key::generate(),
     )
-    .provider(Provider::new(id("google"), endpoint("google", mock)))
-    .provider(Provider::new(id("okta"), endpoint("okta", mock)))
+    .provider(Provider::new(id("google"), endpoint("google", mock, key)))
+    .provider(Provider::new(id("okta"), endpoint("okta", mock, key)))
     .redirect(Arc::new(TrustedHeader::from(HeaderName::from_static(
         "x-gateway-origin",
     ))))
@@ -668,7 +725,8 @@ async fn login_via_header(router: &Router, path: &str, origin: &str) -> (url::Ur
 #[tokio::test]
 async fn trusted_header_gives_each_provider_and_host_its_own_callback() {
     let mock = ScriptedMock::new();
-    let router = trusted_header_router(&mock, MemoryUsers::default());
+    let key = signing_key();
+    let router = trusted_header_router(&mock, MemoryUsers::default(), &key);
 
     let cases = [
         // Bare origin, as recommended.
@@ -702,19 +760,20 @@ async fn trusted_header_gives_each_provider_and_host_its_own_callback() {
 
 #[tokio::test]
 async fn exchange_repeats_the_redirect_uri_sent_to_the_provider() {
+    let key = signing_key();
     let mock = ScriptedMock::new();
     mock.enqueue_json(
         "/google/token",
         StatusCode::OK,
-        &token_response("google", "g-1"),
+        &token_response("google", "g-1", &key),
     );
     mock.enqueue_json(
         "/google/token",
         StatusCode::OK,
-        &token_response("google", "g-2"),
+        &token_response("google", "g-2", &key),
     );
     let users = MemoryUsers::default();
-    let router = trusted_header_router(&mock, users.clone());
+    let router = trusted_header_router(&mock, users.clone(), &key);
 
     for (origin, sub) in [
         ("https://app1.example.com", "g-1"),
@@ -750,7 +809,8 @@ async fn exchange_repeats_the_redirect_uri_sent_to_the_provider() {
 #[tokio::test]
 async fn trusted_header_missing_is_400() {
     let mock = ScriptedMock::new();
-    let router = trusted_header_router(&mock, MemoryUsers::default());
+    let key = signing_key();
+    let router = trusted_header_router(&mock, MemoryUsers::default(), &key);
     let resp = get(&router, "/auth/google/login", None).await;
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
@@ -758,14 +818,19 @@ async fn trusted_header_missing_is_400() {
 #[test]
 #[should_panic(expected = "registered twice")]
 fn duplicate_provider_panics() {
-    setup(|b| {
-        let mock = ScriptedMock::new();
-        b.provider(Provider::new(id("google"), endpoint("google", &mock)))
-    });
+    let key = signing_key();
+    setup(
+        |b| {
+            let mock = ScriptedMock::new();
+            b.provider(Provider::new(id("google"), endpoint("google", &mock, &key)))
+        },
+        &key,
+    );
 }
 
 #[test]
 #[should_panic(expected = "not a registered provider")]
 fn unknown_default_provider_panics() {
-    setup(|b| b.default_provider(id("github")));
+    let key = signing_key();
+    setup(|b| b.default_provider(id("github")), &key);
 }

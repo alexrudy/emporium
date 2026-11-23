@@ -251,6 +251,7 @@ where
     };
 
     let skip_issuer_validation = parse_env(get, &var("SKIP_ISSUER_VALIDATION"), Some("false"))?;
+    let validate_id_tokens = parse_env(get, &var("VALIDATE_ID_TOKENS"), Some("false"))?;
     let iss_parameter: IssParameter = parse_env(get, &var("ISS_PARAMETER"), Some("auto"))?;
 
     Ok(OAuthProviderConfig {
@@ -260,6 +261,7 @@ where
         client_secret: Some(client_secret),
         endpoints,
         scopes,
+        validate_id_tokens,
         skip_issuer_validation,
         iss_parameter,
     })
@@ -345,6 +347,7 @@ struct RawOauth {
     issuer: Option<String>,
     auth_uri: Option<String>,
     token_uri: Option<String>,
+    jwks_uri: Option<String>,
     skip_issuer_validation: Option<bool>,
     iss_parameter: Option<IssParameter>,
 }
@@ -360,6 +363,8 @@ struct RawProvider {
     issuer: Option<String>,
     auth_uri: Option<String>,
     token_uri: Option<String>,
+    jwks_uri: Option<String>,
+    validate_id_tokens: Option<bool>,
     skip_issuer_validation: Option<bool>,
     iss_parameter: Option<IssParameter>,
 }
@@ -400,6 +405,10 @@ impl RawProvider {
             (None, Some(auth_raw), Some(token_raw)) => ProviderEndpoints::Explicit {
                 auth_uri: parse_configured_uri(&auth_raw, &format!("{path}.auth_uri"))?,
                 token_uri: parse_configured_uri(&token_raw, &format!("{path}.token_uri"))?,
+                jwks_uri: self
+                    .jwks_uri
+                    .map(|jwks_raw| parse_configured_uri(&jwks_raw, &format!("{path}.jwks_uri")))
+                    .transpose()?,
             },
             _ => {
                 return Err(eyre!(
@@ -421,6 +430,7 @@ impl RawProvider {
             client_secret: Some(client_secret),
             endpoints,
             scopes,
+            validate_id_tokens: self.validate_id_tokens.unwrap_or(false),
             skip_issuer_validation: self.skip_issuer_validation.unwrap_or(false),
             iss_parameter: self.iss_parameter.unwrap_or_default(),
         })
@@ -491,6 +501,8 @@ impl RawConfig {
             .map(|raw| ProviderId::new(raw).wrap_err("parsing field `oauth.default_provider`"))
             .transpose()?;
 
+        let validate_id_tokens = oauth.jwks_uri.is_some();
+
         // `[oauth]`'s provider fields define the root provider. It's
         // required when there are no `[providers.*]`, so an empty config
         // still reports the missing `oauth.client_id`.
@@ -502,6 +514,8 @@ impl RawConfig {
             issuer: oauth.issuer,
             auth_uri: oauth.auth_uri,
             token_uri: oauth.token_uri,
+            jwks_uri: oauth.jwks_uri,
+            validate_id_tokens: Some(validate_id_tokens),
             skip_issuer_validation: oauth.skip_issuer_validation,
             iss_parameter: oauth.iss_parameter,
         };
@@ -623,6 +637,7 @@ mod tests {
             ProviderEndpoints::Explicit {
                 auth_uri,
                 token_uri,
+                ..
             } => {
                 assert_eq!(
                     auth_uri.to_string(),
@@ -1013,6 +1028,7 @@ mod tests {
             ProviderEndpoints::Explicit {
                 auth_uri,
                 token_uri,
+                ..
             } => {
                 assert_eq!(
                     auth_uri.to_string(),

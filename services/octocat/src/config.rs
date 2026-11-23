@@ -68,14 +68,14 @@ impl GithubApp {
     }
 }
 
-fn rsa_key_from_file(path: &Utf8Path) -> Result<rsa::RsaPrivateKey, FileError> {
-    match rsa::RsaPrivateKey::read_pkcs1_pem_file(path).map_err(|err| FileError {
+fn rsa_key_from_file(path: &Utf8Path) -> Result<rsa::PrivateKey, FileError> {
+    match rsa::PrivateKey::read_pkcs1_pem_file(path).map_err(|err| FileError {
         path: path.to_path_buf(),
         source: err.into(),
     }) {
         Ok(key) => Ok(key),
         Err(pkcs1_error) => {
-            let key = match rsa::RsaPrivateKey::read_pkcs8_pem_file(path).map_err(|err| FileError {
+            let key = match rsa::PrivateKey::read_pkcs8_pem_file(path).map_err(|err| FileError {
                 path: path.to_path_buf(),
                 source: err.into(),
             }) {
@@ -134,7 +134,7 @@ async fn rsa_key_from_storage(
     storage: &Storage,
     bucket: &str,
     path: &Utf8Path,
-) -> Result<rsa::RsaPrivateKey, StorageError> {
+) -> Result<rsa::PrivateKey, StorageError> {
     let mut buf = Vec::new();
     storage
         .download(bucket, path, &mut buf)
@@ -151,7 +151,7 @@ async fn rsa_key_from_storage(
         source: err.into(),
     })?;
 
-    rsa::RsaPrivateKey::from_pkcs1_pem(&contents).map_err(|err| StorageError {
+    rsa::PrivateKey::from_pkcs1_pem(&contents).map_err(|err| StorageError {
         bucket: bucket.to_string(),
         path: path.to_path_buf(),
         source: err.into(),

@@ -41,7 +41,6 @@ use std::time::Duration;
 use api_client::ApiClient;
 use api_client::request::RequestBuilder;
 use api_client::response::Response;
-use chrono::Utc;
 use http::header::{HeaderName, HeaderValue};
 use http::{Method, Uri};
 use hyperdriver::Body;
@@ -222,7 +221,7 @@ impl OAuth2Client {
     }
 
     fn access_token_expired(&self) -> bool {
-        self.api.auth().is_expired(Utc::now())
+        self.api.auth().is_expired(jiff::Timestamp::now())
     }
 
     /// Escape hatch: borrow the inner `ApiClient`. Requests sent via the

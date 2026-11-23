@@ -31,7 +31,7 @@ pub struct PendingAuthorization {
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        with = "crate::provider::serde_uri_opt"
+        with = "crate::provider::serde_uri::opt"
     )]
     pub redirect_uri: Option<Uri>,
 }

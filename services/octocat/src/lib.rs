@@ -5,30 +5,32 @@ use std::fmt;
 use std::path::PathBuf;
 use std::process::Output;
 use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
 use api_client::response::ResponseBodyExt;
 use api_client::{ApiClient, RequestExt, Secret};
 
 use http::HeaderValue;
+use http::header;
 use hyperdriver::client::conn::transport::tcp::TcpTransportConfig;
 use hyperdriver::service::ServiceExt as _;
+use hyperdriver::{Body, Client};
 use jaws::claims::{Claims, RegisteredClaims};
 use jaws::crypto::{rsa, signature};
 use jaws::token::{Token, TokenFormattingError, TokenSigningError};
-
-use http::header;
-use hyperdriver::{Body, Client};
-use models::InstallationAccess;
+use jiff::Timestamp;
 use rsa::sha2::Sha256;
 use thiserror::Error;
+
+use crate::models::InstallationAccess;
 
 pub mod config;
 pub mod models;
 
 pub use crate::config::{GithubAppConfig, GithubAppKey};
 
-const CLOCK_DRIFT_OFFSET_SECONDS: i64 = 60;
-const TOKEN_DURATION_SECONDS: i64 = 5 * 60;
+const CLOCK_DRIFT_OFFSET_SECONDS: u64 = 60;
+const TOKEN_DURATION_SECONDS: u64 = 5 * 60;
 const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 const GITHUB_ACCEPT: &str = "application/vnd.github+json";
@@ -74,6 +76,7 @@ impl From<TokenSigningError> for Error {
         match err {
             TokenSigningError::Signing(err) => err.into(),
             TokenSigningError::Serialization(err) => err.into(),
+            e => Error::Signature(signature::Error::from_source(e)),
         }
     }
 }
@@ -83,6 +86,7 @@ impl From<TokenFormattingError> for Error {
         match value {
             TokenFormattingError::Serialization(error) => error.into(),
             TokenFormattingError::IO(_) => panic!("a formatting error occured"),
+            _ => panic!("unknown formatting error"),
         }
     }
 }
@@ -304,16 +308,16 @@ impl GithubClient {
 #[derive(Debug)]
 struct TokenCache {
     secret: Secret,
-    expires: chrono::DateTime<chrono::Utc>,
+    expires: Timestamp,
 }
 
 impl TokenCache {
-    fn new(secret: Secret, expires: chrono::DateTime<chrono::Utc>) -> Self {
+    fn new(secret: Secret, expires: Timestamp) -> Self {
         Self { secret, expires }
     }
 
     fn is_expired(&self) -> bool {
-        self.expires < chrono::Utc::now()
+        self.expires < Timestamp::now()
     }
 }
 
@@ -323,14 +327,14 @@ impl TokenCache {
 #[derive(Debug, Clone)]
 pub struct GithubApp {
     app_id: String,
-    secret: Arc<rsa::RsaPrivateKey>,
+    secret: Arc<rsa::PrivateKey>,
     token: Arc<RwLock<Option<TokenCache>>>,
     client: hyperdriver::client::SharedClientService<Body, Body>,
 }
 
 impl GithubApp {
     /// Create a new Github App client
-    pub fn new(app_id: String, secret: Arc<rsa::RsaPrivateKey>) -> Self {
+    pub fn new(app_id: String, secret: Arc<rsa::PrivateKey>) -> Self {
         let mut tcp = TcpTransportConfig::default();
         tcp.connect_timeout = Some(CONNECT_TIMEOUT);
 
@@ -454,11 +458,8 @@ impl GithubApp {
     }
 
     /// Get an authentication token for the Github App specific to an installation
-    fn authentication_token(
-        &self,
-        now: Option<chrono::DateTime<chrono::Utc>>,
-    ) -> Result<Secret, Error> {
-        let now = now.unwrap_or_else(chrono::Utc::now);
+    fn authentication_token(&self, now: Option<Timestamp>) -> Result<Secret, Error> {
+        let now = now.unwrap_or_else(Timestamp::now);
 
         {
             let guard = self.token.read().unwrap();
@@ -472,8 +473,8 @@ impl GithubApp {
         // Grab the lock now so that only one cache update occurs
         let mut guard = self.token.write().unwrap();
 
-        let issued_at = now - chrono::Duration::seconds(CLOCK_DRIFT_OFFSET_SECONDS);
-        let expire_at = now + chrono::Duration::seconds(TOKEN_DURATION_SECONDS);
+        let issued_at = now - Duration::from_secs(CLOCK_DRIFT_OFFSET_SECONDS);
+        let expire_at = now + Duration::from_secs(TOKEN_DURATION_SECONDS);
 
         let claims: Claims<(), &str> = Claims {
             registered: RegisteredClaims {
@@ -496,7 +497,7 @@ impl GithubApp {
         tracing::trace!(app = self.app_id, jwt=%encoded_token.revealed(), "Github App JWT");
         let cache = TokenCache::new(
             encoded_token.clone(),
-            expire_at - chrono::Duration::seconds(CLOCK_DRIFT_OFFSET_SECONDS),
+            expire_at - Duration::from_secs(CLOCK_DRIFT_OFFSET_SECONDS),
         );
         *guard = Some(cache);
 
@@ -522,7 +523,7 @@ mod tests {
 
             GithubApp {
                 app_id: "1235".into(),
-                secret: Arc::new(rsa::RsaPrivateKey::from_pkcs8_der(key).unwrap()),
+                secret: Arc::new(rsa::PrivateKey::from_pkcs8_der(key).unwrap()),
                 token: Default::default(),
                 client: Client::builder()
                     .with_auto_http()
@@ -534,8 +535,7 @@ mod tests {
 
     #[test]
     fn create_authentication_token() {
-        use chrono::TimeZone;
-        let now = chrono::Utc.with_ymd_and_hms(2014, 7, 8, 9, 10, 11).unwrap();
+        let now = "2014-07-08T09:10:11Z".parse::<Timestamp>().unwrap();
         let app = GithubApp::test();
 
         let token = GithubApp::authentication_token(&app, Some(now)).unwrap();

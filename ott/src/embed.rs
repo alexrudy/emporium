@@ -3,8 +3,10 @@ use std::task::{Context, Poll};
 use std::{convert::Infallible, future::Future, marker::PhantomData};
 
 use camino::Utf8PathBuf;
-use chrono::TimeZone;
 use rust_embed::Embed;
+
+const HTTP_DATETIME_PRINTER: jiff::fmt::rfc2822::DateTimePrinter =
+    jiff::fmt::rfc2822::DateTimePrinter::new();
 
 pub struct EmbedServer<E> {
     embed: PhantomData<E>,
@@ -113,11 +115,13 @@ where
                     .metadata
                     .last_modified()
                     .and_then(|ts| i64::try_from(ts).ok())
-                    .and_then(|ts| chrono::Utc.timestamp_opt(ts, 0).earliest())
+                    .and_then(|ts| jiff::Timestamp::from_second(ts).ok())
                 {
                     response = response.header(
                         http::header::LAST_MODIFIED,
-                        last_modified.with_timezone(&chrono_tz::GMT).to_rfc2822(),
+                        HTTP_DATETIME_PRINTER
+                            .timestamp_to_rfc9110_string(&last_modified)
+                            .expect("last modified year must be represented in RFC 9110 format"),
                     );
                 }
 

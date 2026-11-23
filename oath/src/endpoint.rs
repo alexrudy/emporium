@@ -33,6 +33,7 @@ use http_body_util::BodyExt as _;
 use hyperdriver::Body;
 use hyperdriver::client::SharedClientService;
 use hyperdriver::service::SharedService;
+use jaws::key::{JwkSet, PublicWebKey};
 use secret::Secret;
 use thiserror::Error;
 use tower::ServiceExt as _;
@@ -76,6 +77,7 @@ struct Inner {
     issuer: Option<String>,
     iss_parameter_supported: bool,
     auth_style: ClientAuthStyle,
+    keys: Option<JwkSet<PublicWebKey>>,
     transport: SharedClientService<Body, Body>,
 }
 
@@ -91,6 +93,7 @@ impl fmt::Debug for Inner {
             .field("issuer", &self.issuer)
             .field("iss_parameter_supported", &self.iss_parameter_supported)
             .field("auth_style", &self.auth_style)
+            .field("keys", &self.keys)
             .finish_non_exhaustive()
     }
 }
@@ -154,6 +157,11 @@ impl TokenEndpoint {
     /// The configured client-auth style.
     pub fn auth_style(&self) -> ClientAuthStyle {
         self.inner.auth_style
+    }
+
+    /// The set of public JWK keys used to verify tokens.
+    pub fn keys(&self) -> Option<&JwkSet<PublicWebKey>> {
+        self.inner.keys.as_ref()
     }
 
     /// Exchange a grant for a token response.
@@ -274,12 +282,13 @@ impl TokenEndpoint {
             .await
             .map_err(|e| Error::Transport(api_client::Error::Request(e)))?;
 
-        parse_response(response).await
+        parse_response(response, target).await
     }
 }
 
 async fn parse_response<R: serde::de::DeserializeOwned>(
     response: Response<Body>,
+    url: &Uri,
 ) -> Result<R, Error> {
     let (parts, body) = response.into_parts();
     let status = parts.status;
@@ -294,6 +303,7 @@ async fn parse_response<R: serde::de::DeserializeOwned>(
         return serde_json::from_slice::<R>(&bytes).map_err(|source| Error::Deserialize {
             source,
             body: String::from_utf8_lossy(&bytes).into_owned(),
+            url: url.to_string(),
         });
     }
 
@@ -305,6 +315,7 @@ async fn parse_response<R: serde::de::DeserializeOwned>(
     Err(Error::BadResponse {
         status,
         body: String::from_utf8_lossy(&bytes).into_owned(),
+        url: url.to_string(),
     })
 }
 
@@ -320,6 +331,7 @@ pub struct TokenEndpointBuilder {
     issuer: Option<String>,
     iss_parameter_supported: bool,
     auth_style: ClientAuthStyle,
+    keys: Option<JwkSet<PublicWebKey>>,
     transport: Option<SharedClientService<Body, Body>>,
 }
 
@@ -335,6 +347,7 @@ impl fmt::Debug for TokenEndpointBuilder {
             .field("issuer", &self.issuer)
             .field("iss_parameter_supported", &self.iss_parameter_supported)
             .field("auth_style", &self.auth_style)
+            .field("keys", &self.keys)
             .finish_non_exhaustive()
     }
 }
@@ -369,6 +382,13 @@ impl TokenEndpointBuilder {
     /// [`TokenEndpoint::start_device_flow`] (RFC 8628).
     pub fn device_uri(mut self, uri: Uri) -> Self {
         self.device_uri = Some(uri);
+        self
+    }
+
+    /// Optional: the set of public JWK keys used to verify tokens.
+    /// When not provided, ID tokens will not be supported.
+    pub fn keys(mut self, keys: JwkSet<PublicWebKey>) -> Self {
+        self.keys = Some(keys);
         self
     }
 
@@ -467,6 +487,7 @@ impl TokenEndpointBuilder {
                 issuer: self.issuer,
                 iss_parameter_supported: self.iss_parameter_supported,
                 auth_style: self.auth_style,
+                keys: self.keys,
                 transport,
             }),
         })
@@ -630,9 +651,10 @@ mod tests {
             .unwrap_err();
 
         match err {
-            Error::BadResponse { status, body } => {
+            Error::BadResponse { status, body, url } => {
                 assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
                 assert_eq!(body, "upstream is on fire");
+                assert_eq!(url, "https://example.com/oauth/token");
             }
             other => panic!("expected BadResponse, got {other:?}"),
         }

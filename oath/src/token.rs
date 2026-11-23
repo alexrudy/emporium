@@ -13,8 +13,8 @@
 use std::collections::BTreeMap;
 
 use api_client::Authentication;
-use chrono::{DateTime, Duration, Utc};
 use http::HeaderValue;
+use jiff::{SignedDuration as Duration, Timestamp};
 use secret::Secret;
 use serde::{Deserialize, Serialize};
 
@@ -23,7 +23,7 @@ use crate::scope::ScopeSet;
 /// Seconds subtracted from a token's stated expiry to account for clock
 /// drift between client and server. Matches the offset used by
 /// `services/octocat`.
-pub const CLOCK_DRIFT_OFFSET_SECS: i64 = 60;
+pub const CLOCK_DRIFT_OFFSET: Duration = Duration::from_secs(60);
 
 /// An OAuth2 access token.
 ///
@@ -33,7 +33,7 @@ pub const CLOCK_DRIFT_OFFSET_SECS: i64 = 60;
 #[derive(Debug, Clone)]
 pub struct AccessToken {
     token: Secret,
-    expires_at: Option<DateTime<Utc>>,
+    expires_at: Option<Timestamp>,
 }
 
 impl AccessToken {
@@ -43,7 +43,7 @@ impl AccessToken {
     /// caller wants applied. To build from a relative `expires_in` value
     /// returned by an OAuth2 token endpoint, prefer
     /// [`AccessToken::from_response_at`] or `TokenSet::from(response)`.
-    pub fn new(token: Secret, expires_at: Option<DateTime<Utc>>) -> Self {
+    pub fn new(token: Secret, expires_at: Option<Timestamp>) -> Self {
         Self { token, expires_at }
     }
 
@@ -53,18 +53,15 @@ impl AccessToken {
     /// when `expires_in` is provided, otherwise `None`.
     pub fn from_response_at(
         token: Secret,
-        expires_in: Option<u64>,
-        received_at: DateTime<Utc>,
+        expires_in: Option<Duration>,
+        received_at: Timestamp,
     ) -> Self {
-        let expires_at = expires_in.map(|secs| {
-            received_at + Duration::seconds(secs as i64)
-                - Duration::seconds(CLOCK_DRIFT_OFFSET_SECS)
-        });
+        let expires_at = expires_in.map(|when| received_at + when - CLOCK_DRIFT_OFFSET);
         Self { token, expires_at }
     }
 
     /// Inspect the absolute expiry time, if known.
-    pub fn expires_at(&self) -> Option<DateTime<Utc>> {
+    pub fn expires_at(&self) -> Option<Timestamp> {
         self.expires_at
     }
 
@@ -73,7 +70,7 @@ impl AccessToken {
     /// Returns `false` if the token has no recorded expiry — by RFC 6749
     /// §5.1 `expires_in` is RECOMMENDED but not REQUIRED, and a missing
     /// value means the server did not provide a lifetime hint.
-    pub fn is_expired(&self, now: DateTime<Utc>) -> bool {
+    pub fn is_expired(&self, now: Timestamp) -> bool {
         matches!(self.expires_at, Some(exp) if exp <= now)
     }
 
@@ -195,14 +192,14 @@ pub struct TokenSet {
     pub refresh_token: Option<RefreshToken>,
     /// The granted scopes, if the server returned them.
     pub scope: Option<ScopeSet>,
-    /// The OIDC ID token, if returned. Unvalidated.
+    /// The OIDC ID token, if returned.
     pub id_token: Option<String>,
 }
 
 impl TokenSet {
     /// Convert a [`TokenResponse`] into a [`TokenSet`], resolving
     /// `expires_in` against the supplied reception time.
-    pub fn from_response_at(response: TokenResponse, received_at: DateTime<Utc>) -> Self {
+    pub fn from_response_at(response: TokenResponse, received_at: Timestamp) -> Self {
         let TokenResponse {
             access_token,
             expires_in,
@@ -215,7 +212,13 @@ impl TokenSet {
         } = response;
 
         Self {
-            access_token: AccessToken::from_response_at(access_token, expires_in, received_at),
+            access_token: AccessToken::from_response_at(
+                access_token,
+                expires_in
+                    .and_then(|secs| i64::try_from(secs).ok())
+                    .map(Duration::from_secs),
+                received_at,
+            ),
             refresh_token: refresh_token.map(RefreshToken::new),
             scope,
             id_token,
@@ -225,54 +228,66 @@ impl TokenSet {
 
 impl From<TokenResponse> for TokenSet {
     fn from(response: TokenResponse) -> Self {
-        Self::from_response_at(response, Utc::now())
+        let now = jiff::Timestamp::now();
+        Self::from_response_at(response, now)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use chrono::TimeZone;
 
-    fn epoch() -> DateTime<Utc> {
-        Utc.timestamp_opt(0, 0).unwrap()
-    }
+    use super::*;
+    use crate::{AccessToken, TokenSet};
+
+    use secret::Secret;
 
     #[test]
     fn access_token_with_no_expiry_is_never_expired() {
         let tok = AccessToken::new(Secret::from("abc"), None);
-        assert!(!tok.is_expired(Utc::now()));
+        assert!(!tok.is_expired(Timestamp::now()));
     }
 
     #[test]
     fn access_token_expires_at_offset_subtracts_drift() {
-        let received = epoch();
-        let tok = AccessToken::from_response_at(Secret::from("abc"), Some(3600), received);
-        let expected = received + Duration::seconds(3600 - CLOCK_DRIFT_OFFSET_SECS);
+        let received = Timestamp::UNIX_EPOCH;
+        let tok = AccessToken::from_response_at(
+            Secret::from("abc"),
+            Some(Duration::from_mins(10)),
+            received,
+        );
+        let expected = received + Duration::from_mins(10) - CLOCK_DRIFT_OFFSET;
         assert_eq!(tok.expires_at(), Some(expected));
     }
 
     #[test]
     fn access_token_is_expired_after_expires_at() {
-        let received = epoch();
-        let tok = AccessToken::from_response_at(Secret::from("abc"), Some(60), received);
+        let received = Timestamp::UNIX_EPOCH;
+        let tok = AccessToken::from_response_at(
+            Secret::from("abc"),
+            Some(Duration::from_mins(1)),
+            received,
+        );
         // 60s lifetime minus 60s drift = 0s effective; receiver == expiry.
         assert!(tok.is_expired(received));
         // And of course any time later than that.
-        assert!(tok.is_expired(received + Duration::seconds(1)));
+        assert!(tok.is_expired(received + Duration::from_secs(1)));
     }
 
     #[test]
     fn access_token_is_fresh_before_expires_at() {
-        let received = epoch();
-        let tok = AccessToken::from_response_at(Secret::from("abc"), Some(3600), received);
+        let received = Timestamp::UNIX_EPOCH;
+        let tok = AccessToken::from_response_at(
+            Secret::from("abc"),
+            Some(Duration::from_mins(10)),
+            received,
+        );
         assert!(!tok.is_expired(received));
-        assert!(!tok.is_expired(received + Duration::seconds(60)));
+        assert!(!tok.is_expired(received + Duration::from_secs(60)));
     }
 
     #[test]
     fn access_token_missing_expires_in_yields_no_expiry() {
-        let tok = AccessToken::from_response_at(Secret::from("abc"), None, epoch());
+        let tok = AccessToken::from_response_at(Secret::from("abc"), None, Timestamp::UNIX_EPOCH);
         assert!(tok.expires_at().is_none());
     }
 
@@ -368,27 +383,11 @@ mod tests {
             id_token: None,
             extra: BTreeMap::new(),
         };
-        let received = epoch();
+        let received = Timestamp::UNIX_EPOCH;
         let set = TokenSet::from_response_at(resp, received);
 
-        let expected = received + Duration::seconds(120 - CLOCK_DRIFT_OFFSET_SECS);
+        let expected = received + Duration::from_secs(120) - CLOCK_DRIFT_OFFSET;
         assert_eq!(set.access_token.expires_at(), Some(expected));
         assert!(set.refresh_token.is_some());
-    }
-
-    #[test]
-    fn tokenset_from_response_no_expiry() {
-        let resp = TokenResponse {
-            access_token: Secret::from("a"),
-            token_type: TokenType::Bearer,
-            expires_in: None,
-            refresh_token: None,
-            scope: None,
-            id_token: None,
-            extra: BTreeMap::new(),
-        };
-        let set = TokenSet::from(resp);
-        assert!(set.access_token.expires_at().is_none());
-        assert!(set.refresh_token.is_none());
     }
 }

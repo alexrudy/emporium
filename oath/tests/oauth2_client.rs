@@ -2,10 +2,9 @@
 
 mod common;
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use api_client::ApiClient;
-use chrono::{Duration as ChronoDuration, Utc};
 use common::ScriptedMock;
 use http::StatusCode;
 use oath::{AccessToken, OAuth2Client, RefreshStrategy, RefreshToken, TokenEndpoint};
@@ -57,7 +56,7 @@ async fn expired_token_triggers_refresh_before_request() {
 
     let expired = AccessToken::new(
         Secret::from("expired"),
-        Some(Utc::now() - ChronoDuration::seconds(1)),
+        Some(jiff::Timestamp::now() - Duration::from_secs(1)),
     );
     let refresh = RefreshToken::new(Secret::from("rtok"));
     let client = make_client(mock.clone(), expired, refresh);
@@ -89,7 +88,7 @@ async fn fresh_token_skips_refresh() {
 
     let fresh = AccessToken::new(
         Secret::from("still-good"),
-        Some(Utc::now() + ChronoDuration::hours(1)),
+        Some(jiff::Timestamp::now() + Duration::from_hours(1)),
     );
     let refresh = RefreshToken::new(Secret::from("rtok"));
     let client = make_client(mock.clone(), fresh, refresh);
@@ -128,7 +127,7 @@ async fn concurrent_sends_collapse_to_one_refresh() {
 
     let expired = AccessToken::new(
         Secret::from("expired"),
-        Some(Utc::now() - ChronoDuration::seconds(1)),
+        Some(jiff::Timestamp::now() - Duration::from_secs(1)),
     );
     let refresh = RefreshToken::new(Secret::from("rtok"));
     let client = Arc::new(make_client(mock.clone(), expired, refresh));
@@ -181,7 +180,7 @@ async fn refresh_rotates_stored_refresh_token() {
 
     let expired = AccessToken::new(
         Secret::from("e1"),
-        Some(Utc::now() - ChronoDuration::seconds(1)),
+        Some(jiff::Timestamp::now() - Duration::from_secs(1)),
     );
     let refresh = RefreshToken::new(Secret::from("rtok"));
     let client = make_client(mock.clone(), expired, refresh);
@@ -190,7 +189,7 @@ async fn refresh_rotates_stored_refresh_token() {
     // Mark token as expired again to force a second refresh.
     client.api_client().refresh_auth(AccessToken::new(
         Secret::from("e2"),
-        Some(Utc::now() - ChronoDuration::seconds(1)),
+        Some(jiff::Timestamp::now() - Duration::from_secs(1)),
     ));
     client.get("widgets").send().await.unwrap();
 

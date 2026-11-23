@@ -1,7 +1,7 @@
 //! Github API object models.
 
 use api_client::{Authentication, RequestExt, Secret};
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use serde::Deserialize;
 
 pub mod commits;
@@ -38,13 +38,13 @@ pub struct InstallationAccess {
     pub(crate) token: Secret,
 
     /// Token expiration time.
-    pub expires_at: DateTime<Utc>,
+    pub expires_at: Timestamp,
 }
 
 impl InstallationAccess {
     /// Check if the access token is expired.
     pub fn is_expired(&self) -> bool {
-        self.expires_at < Utc::now()
+        self.expires_at < Timestamp::now()
     }
 }
 

@@ -1,6 +1,6 @@
 //! Commit data models.
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
 /// A commit object.
@@ -30,5 +30,5 @@ pub struct AuthorCommitDetails {
     /// Author email
     pub email: String,
     /// The date of the commit.
-    pub date: DateTime<Utc>,
+    pub date: Timestamp,
 }

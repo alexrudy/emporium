@@ -14,7 +14,7 @@ async fn main() -> eyre::Result<()> {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../.github/app-key.pem");
 
         let dst = tokio::fs::read_to_string(path).await?;
-        rsa::RsaPrivateKey::from_pkcs1_pem(&dst).expect("valid pkcs8 key")
+        rsa::PrivateKey::from_pkcs1_pem(&dst).expect("valid pkcs8 key")
     };
 
     let app = octocat::GithubApp::new(

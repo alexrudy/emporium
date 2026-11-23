@@ -11,14 +11,15 @@ mod common;
 
 use axum::Router;
 use axum::body::Body;
-use base64::Engine as _;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use common::ScriptedMock;
 use cookie::Key;
 use http::{Request, StatusCode, Uri, header};
+use jaws::Token;
+use jaws::crypto::rsa::Generate;
+use jaws::crypto::signature::Keypair;
+use jaws::key::{Identified, JwkSet, PublicWebKey, SigningWebKey};
 use oath::server::{
     Identity, IdentityResolver, InMemorySessionStore, JsonFileUserStore, OAuth2Router,
-    parse_id_token,
 };
 use oath::{ScopeSet, TokenEndpoint};
 use secret::Secret;
@@ -35,18 +36,31 @@ struct AppUser {
     sub: String,
 }
 
-fn id_token(sub: &str, email: &str) -> String {
-    let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"RS256","typ":"JWT"}"#);
+fn signing_key() -> SigningWebKey {
+    jaws::crypto::rsa::pkcs1v15::SigningKey::<jaws::crypto::sha2::Sha256>::from(
+        jaws::crypto::rsa::PrivateKey::generate(),
+    )
+    .into()
+}
+
+fn keyset(key: &SigningWebKey) -> JwkSet<PublicWebKey> {
+    let public_key = PublicWebKey::try_from(key.verifying_key()).unwrap();
+    JwkSet::from(vec![
+        Identified::unidentified(public_key).with_id("key-id".into()),
+    ])
+}
+
+fn id_token(sub: &str, email: &str, key: &SigningWebKey) -> String {
     let payload = serde_json::json!({
         "sub": sub,
         "email": email,
         "email_verified": true,
         "aud": "the-client",
-    })
-    .to_string();
-    let payload_b64 = URL_SAFE_NO_PAD.encode(payload.as_bytes());
-    let sig = URL_SAFE_NO_PAD.encode(b"unverified-signature-bytes");
-    format!("{header}.{payload_b64}.{sig}")
+    });
+    let mut token = Token::compact((), payload);
+    *token.header_mut().key_id() = Some("key-id".into());
+
+    token.sign(key).unwrap().rendered().unwrap()
 }
 
 fn token_response_bytes(id_tok: &str) -> Vec<u8> {
@@ -68,12 +82,12 @@ struct Setup {
     sessions: InMemorySessionStore,
 }
 
-async fn setup_router(id_tok_sub: &str, id_tok_email: &str) -> Setup {
+async fn setup_router(id_tok_sub: &str, id_tok_email: &str, key: &SigningWebKey) -> Setup {
     let mock = ScriptedMock::new();
     mock.enqueue_json(
         "/oauth/token",
         StatusCode::OK,
-        &token_response_bytes(&id_token(id_tok_sub, id_tok_email)),
+        &token_response_bytes(&id_token(id_tok_sub, id_tok_email, key)),
     );
 
     let endpoint = TokenEndpoint::builder()
@@ -86,6 +100,7 @@ async fn setup_router(id_tok_sub: &str, id_tok_email: &str) -> Setup {
         )
         .token_uri("https://provider.example.com/oauth/token".parse().unwrap())
         .redirect_uri("https://app.example.com/auth/callback".parse().unwrap())
+        .keys(keyset(key))
         .transport(mock.clone())
         .build()
         .unwrap();
@@ -97,7 +112,7 @@ async fn setup_router(id_tok_sub: &str, id_tok_email: &str) -> Setup {
         JsonFileUserStore::new(SharedStorage(storage_for_users), APP_BUCKET);
 
     let identity = IdentityResolver::new(|tokens| async move {
-        let claims = parse_id_token(&tokens)?;
+        let claims = tokens.claims.expect("ID Claims were validated");
         Ok(Identity {
             username: claims.sub.clone(),
             data: AppUser {
@@ -196,7 +211,9 @@ fn extract_cookie_value(headers: &http::HeaderMap, cookie_name: &str) -> Option<
 
 #[tokio::test]
 async fn login_callback_logout_round_trip() {
-    let setup = setup_router("user-sub-123", "alice@example.com").await;
+    let _ = tracing_subscriber::fmt::try_init();
+    let key = signing_key();
+    let setup = setup_router("user-sub-123", "alice@example.com", &key).await;
     let router = setup.router.clone();
 
     // --- GET /auth/login -------------------------------------------------
@@ -335,7 +352,8 @@ async fn login_callback_logout_round_trip() {
 /// Drive login (at `login_uri`) and the callback; return the callback's
 /// redirect target.
 async fn login_then_callback(login_uri: &str) -> String {
-    let setup = setup_router("user-sub", "user@example.com").await;
+    let key = signing_key();
+    let setup = setup_router("user-sub", "user@example.com", &key).await;
     let router = setup.router.clone();
 
     let login = router
@@ -406,7 +424,8 @@ async fn unsafe_return_to_falls_back_to_login_landing() {
 
 #[tokio::test]
 async fn callback_without_preauth_cookie_is_400() {
-    let setup = setup_router("anything", "anything").await;
+    let key = signing_key();
+    let setup = setup_router("anything", "anything", &key).await;
     let response = setup
         .router
         .oneshot(
@@ -422,7 +441,8 @@ async fn callback_without_preauth_cookie_is_400() {
 
 #[tokio::test]
 async fn callback_with_state_mismatch_is_400() {
-    let setup = setup_router("user-sub", "user@example.com").await;
+    let key = signing_key();
+    let setup = setup_router("user-sub", "user@example.com", &key).await;
     let router = setup.router.clone();
 
     // Drive login to capture a real preauth cookie.
@@ -465,7 +485,8 @@ async fn callback_with_state_mismatch_is_400() {
 
 #[tokio::test]
 async fn callback_with_provider_error_query_is_400() {
-    let setup = setup_router("user-sub", "user@example.com").await;
+    let key = signing_key();
+    let setup = setup_router("user-sub", "user@example.com", &key).await;
     let response = setup
         .router
         .oneshot(

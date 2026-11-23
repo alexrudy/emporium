@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 
 use cookie::Key;
+use jiff::{Span, ToSpan};
 use oath::server::ProviderId;
 pub use oath::{provider::OAuthProviderConfig, server::OAuth2RouterConfig};
 use secret::Secret;
@@ -16,7 +17,7 @@ use crate::store::StoreConfig;
 #[serde(default)]
 pub struct SessionsConfig {
     /// The time-to-live for session cookies.
-    pub ttl: chrono::Duration,
+    pub ttl: Span,
 
     /// The secret key used for signing session cookies.
     pub key: Secret,
@@ -29,7 +30,7 @@ pub struct SessionsConfig {
 impl Default for SessionsConfig {
     fn default() -> Self {
         Self {
-            ttl: chrono::Duration::hours(48),
+            ttl: 48.hours(),
             key: data_encoding::BASE64
                 .encode(Key::generate().master())
                 .into(),

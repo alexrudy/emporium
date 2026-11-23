@@ -26,12 +26,14 @@
 //! ```
 
 use std::collections::BTreeMap;
+use std::sync::LazyLock;
 
 use http::header::{ACCEPT, HeaderValue};
 use http::{Method, Request, Response, Uri};
 use http_body_util::BodyExt as _;
 use hyperdriver::Body;
 use hyperdriver::client::SharedClientService;
+use jaws::key::{JwkSet, PublicWebKey};
 use tower::ServiceExt as _;
 
 use crate::error::Error;
@@ -130,7 +132,7 @@ impl ProviderMetadata {
     /// using a default TLS transport.
     pub async fn discover(issuer: &Uri) -> Result<Self, Error> {
         let url = Self::well_known_url(issuer);
-        Self::fetch_with_transport(url, default_transport()).await
+        Self::fetch_with_transport(url, DEFAULT_TRANSPORT.clone()).await
     }
 
     /// Fetch metadata from an explicit URL using an injected transport.
@@ -163,6 +165,35 @@ impl ProviderMetadata {
         parse_metadata(response, url).await
     }
 
+    /// Fetch the public JWK keys used to verify tokens.
+    pub async fn fetch_keys(&self) -> Result<JwkSet<PublicWebKey>, Error> {
+        self.fetch_keys_with_transport(DEFAULT_TRANSPORT.clone())
+            .await
+    }
+
+    /// Fetch the public JWK keys used to verify tokens.
+    pub async fn fetch_keys_with_transport<S>(
+        &self,
+        transport: S,
+    ) -> Result<JwkSet<PublicWebKey>, Error>
+    where
+        S: tower::Service<
+                http::Request<Body>,
+                Response = http::Response<Body>,
+                Error = hyperdriver::client::Error,
+            > + Clone
+            + Send
+            + Sync
+            + 'static,
+        S::Future: Send + 'static,
+    {
+        let url = parse_uri(
+            self.jwks_uri.as_deref().ok_or(Error::MissingJwksUri)?,
+            "jwks_uri",
+        )?;
+        fetch_jwks_with_transport(url, transport).await
+    }
+
     /// Parse the `issuer` field as a [`Uri`].
     pub fn issuer_uri(&self) -> Result<Uri, Error> {
         parse_uri(&self.issuer, "issuer")
@@ -193,12 +224,9 @@ impl ProviderMetadata {
 }
 
 fn parse_uri(raw: &str, field: &'static str) -> Result<Uri, Error> {
-    raw.parse::<Uri>().map_err(|source| Error::Deserialize {
-        source: serde_json::Error::io(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            format!("metadata field {field} is not a valid URI: {source}"),
-        )),
-        body: raw.to_owned(),
+    raw.parse::<Uri>().map_err(|_| Error::InvalidUrl {
+        raw: raw.into(),
+        field,
     })
 }
 
@@ -219,14 +247,82 @@ async fn parse_metadata(response: Response<Body>, url: Uri) -> Result<ProviderMe
         return Err(Error::BadResponse {
             status,
             body: format!("{url}: {body}", body = String::from_utf8_lossy(&bytes),),
+            url: url.to_string(),
         });
     }
 
     serde_json::from_slice::<ProviderMetadata>(&bytes).map_err(|source| Error::Deserialize {
         source,
         body: String::from_utf8_lossy(&bytes).into_owned(),
+        url: url.to_string(),
     })
 }
+
+/// Fetch the JWK Set from the given URL using the default transport.
+pub async fn fetch_jwks(url: Uri) -> Result<JwkSet<PublicWebKey>, Error> {
+    fetch_jwks_with_transport(url, DEFAULT_TRANSPORT.clone()).await
+}
+
+/// Fetch the JWK Set from the given URL using the provided transport.
+pub async fn fetch_jwks_with_transport<S>(
+    url: Uri,
+    transport: S,
+) -> Result<JwkSet<PublicWebKey>, Error>
+where
+    S: tower::Service<
+            http::Request<Body>,
+            Response = http::Response<Body>,
+            Error = hyperdriver::client::Error,
+        > + Clone
+        + Send
+        + Sync
+        + 'static,
+    S::Future: Send + 'static,
+{
+    let request = http::Request::builder()
+        .method(Method::GET)
+        .uri(url.clone())
+        .header(ACCEPT, HeaderValue::from_static("application/json"))
+        .body(Body::empty())
+        .expect("Public JWK Set request builds");
+
+    let response = transport
+        .oneshot(request)
+        .await
+        .map_err(|e| Error::Transport(api_client::Error::Request(e)))?;
+
+    parse_keys(response, url).await
+}
+
+async fn parse_keys(
+    response: http::Response<Body>,
+    url: Uri,
+) -> Result<JwkSet<PublicWebKey>, Error> {
+    let (parts, body) = response.into_parts();
+    let status = parts.status;
+    let collected = body
+        .collect()
+        .await
+        .map_err(|e| Error::Transport(api_client::Error::ResponseBody(e)))?;
+    let bytes = collected.to_bytes();
+
+    if !status.is_success() {
+        return Err(Error::BadResponse {
+            status,
+            body: String::from_utf8_lossy(&bytes).into_owned(),
+            url: url.to_string(),
+        });
+    }
+
+    serde_json::from_slice::<JwkSet<PublicWebKey>>(&bytes).map_err(|source| Error::Deserialize {
+        source,
+        body: String::from_utf8_lossy(&bytes).into_owned(),
+        url: url.to_string(),
+    })
+}
+
+static DEFAULT_TRANSPORT: LazyLock<SharedClientService<Body, Body>> =
+    LazyLock::new(default_transport);
 
 fn default_transport() -> SharedClientService<Body, Body> {
     hyperdriver::Client::build_tcp_http()

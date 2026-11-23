@@ -10,10 +10,11 @@ description = "An OAuth2 client for consuming OAuth2-protected APIs, with option
 api-client.workspace = true
 secret.workspace = true
 base64.workspace = true
-chrono.workspace = true
 http.workspace = true
 http-body-util.workspace = true
 hyperdriver.workspace = true
+jaws.workspace = true
+jiff.workspace = true
 rand.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
@@ -54,6 +55,7 @@ json-file-user-store = [
 bytes.workspace = true
 hyperdriver = { workspace = true, features = ["tls-ring"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
+tracing-subscriber.workspace = true
 url.workspace = true
 
 [lints]

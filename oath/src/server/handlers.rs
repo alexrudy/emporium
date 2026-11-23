@@ -10,11 +10,13 @@ use axum::response::{IntoResponse, Redirect};
 use cookie::{Cookie, CookieJar, Key, SameSite};
 use serde::Deserialize;
 
+use crate::identity::IdClaimValidator;
+use crate::server::identity::IdTokenSet;
 use crate::{AuthorizationUrl, TokenErrorCode};
 
 use super::config::OAuth2RouterConfig;
 use super::error::ServerError;
-use super::identity::{Identity, IdentityResolver, validate_id_token};
+use super::identity::{Identity, IdentityResolver};
 use super::redirect::ExtractRedirect;
 use super::registry::Provider;
 use super::session::{SessionData, SessionId, SessionStore};
@@ -203,24 +205,35 @@ where
         });
     }
 
-    let token_set = pending
+    let mut token_set = pending
         .complete(provider.endpoint(), &auth_state, auth_code)
         .await?;
 
     // OIDC providers return an id_token; make sure it's from this
     // provider and for this client before the app's resolver sees it.
-    if token_set.id_token.is_some() {
-        validate_id_token(
-            &token_set,
-            provider.endpoint().client_id(),
-            provider.expected_issuer(),
+    let id_claims = if let Some(claims) = token_set.id_token.as_deref() {
+        let mut validator = IdClaimValidator::new(provider.endpoint());
+        if provider.expected_issuer().is_none() {
+            validator = validator.ignore_issuer();
+        };
+
+        Some(
+            validator
+                .validate(claims)
+                .map_err(ServerError::InvalidIdToken)?,
         )
-        .map_err(ServerError::InvalidIdToken)?;
-    }
+    } else {
+        tracing::trace!("Dropping ID token, provider does not have JWK Set");
+        token_set.id_token.take();
+        None
+    };
+
+    let mut id_tokens = IdTokenSet::from(token_set);
+    id_tokens.claims = id_claims;
 
     let Identity { username, data } = state
         .identity
-        .resolve(provider.id(), token_set)
+        .resolve(provider.id(), id_tokens)
         .await
         .map_err(ServerError::identity)?;
 

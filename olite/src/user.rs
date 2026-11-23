@@ -3,7 +3,7 @@
 use std::fmt;
 use std::marker::PhantomData;
 
-use chrono::Utc;
+use jiff::Timestamp;
 use oath::server::{ProviderId, UserStore};
 use rusqlite::{OptionalExtension as _, params};
 use serde::{Serialize, de::DeserializeOwned};
@@ -76,7 +76,7 @@ where
         let provider = provider.as_str().to_owned();
         let username = username.to_owned();
         let json = serde_json::to_string(data)?;
-        let now = Utc::now().timestamp_millis();
+        let now = Timestamp::now().as_millisecond();
         self.db
             .call(move |conn| {
                 conn.execute(

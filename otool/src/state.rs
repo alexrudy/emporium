@@ -34,7 +34,10 @@ impl AppState {
         providers: ProvidersConfig,
         sessions: SessionsConfig,
     ) -> Result<Self, StoreError> {
-        let ttl = sessions.ttl.to_std().map_err(|_| StoreError::NegativeTtl)?;
+        let ttl = sessions
+            .ttl
+            .try_into()
+            .map_err(|_| StoreError::NegativeTtl)?;
         let Stores {
             sessions: sessions_store,
             users: users_store,
