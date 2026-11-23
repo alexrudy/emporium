@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::endpoint::TokenEndpoint;
 use crate::error::Error;
 use crate::grant::authorization_code::AuthorizationCodeRequest;
+use crate::nonce::Nonce;
 use crate::pkce::PkceVerifier;
 use crate::state::StateToken;
 use crate::token::TokenSet;
@@ -21,6 +22,11 @@ use crate::token::TokenSet;
 pub struct PendingAuthorization {
     /// The CSRF state token sent in the authorization request.
     pub state: StateToken,
+
+    /// The OIDC Nonce sent in the authorization request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nonce: Option<Nonce>,
+
     /// The PKCE verifier whose challenge was sent in the authorization
     /// request. Must be presented to the token endpoint at exchange time.
     pub verifier: PkceVerifier,

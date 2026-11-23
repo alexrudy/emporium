@@ -2822,6 +2822,7 @@ dependencies = [
 name = "secret"
 version = "0.10.0"
 dependencies = [
+ "ctutils",
  "http",
  "serde",
  "zeroize",

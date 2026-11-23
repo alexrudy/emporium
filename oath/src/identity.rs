@@ -11,7 +11,7 @@ use jaws::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::TokenEndpoint;
+use crate::{TokenEndpoint, nonce::Nonce};
 
 /// Reasons identity resolution can fail.
 #[derive(Debug, thiserror::Error)]
@@ -19,6 +19,10 @@ pub enum OIDCTokenError {
     /// The [`TokenEndpoint`] has no public key set.
     #[error("no public key set")]
     NoPublicKeySet,
+
+    /// The `nonce` was not provided to the validator
+    #[error("no nonce provided")]
+    NoNonce,
 
     /// The [`TokenSet`] carried no `id_token` to parse.
     #[error("token set did not include an id_token")]
@@ -155,7 +159,7 @@ pub struct IdClaims {
 #[derive(Debug, Clone)]
 pub struct IdClaimValidator<'e, 'n> {
     endpoint: &'e TokenEndpoint,
-    nonce: Option<&'n str>,
+    nonce: Option<&'n Nonce>,
     now: jiff::Timestamp,
     validate_issuer: bool,
 }
@@ -178,8 +182,8 @@ impl<'e, 'n> IdClaimValidator<'e, 'n> {
     }
 
     /// Validates the issuer claim when validating the token.
-    pub fn with_nonce(mut self, nonce: &'n str) -> Self {
-        self.nonce = Some(nonce);
+    pub fn with_nonce(mut self, nonce: Option<&'n Nonce>) -> Self {
+        self.nonce = nonce;
         self
     }
 
@@ -194,6 +198,10 @@ impl<'e, 'n> IdClaimValidator<'e, 'n> {
         let Some(keys) = self.endpoint.keys() else {
             return Err(OIDCTokenError::NoPublicKeySet);
         };
+
+        if self.endpoint.validate_nonce() && self.nonce.is_none() {
+            return Err(OIDCTokenError::NoNonce);
+        }
 
         let id_token: Token<IdClaims, Unverified<()>> = token
             .parse::<Token<_, _>>()
@@ -244,13 +252,11 @@ impl<'e, 'n> IdClaimValidator<'e, 'n> {
 pub fn validate(
     token: &str,
     endpoint: &TokenEndpoint,
-    nonce: Option<&str>,
+    nonce: Option<&Nonce>,
 ) -> Result<IdClaims, OIDCTokenError> {
-    let mut validator = IdClaimValidator::new(endpoint);
-    if let Some(nonce) = nonce {
-        validator = validator.with_nonce(nonce);
-    }
-    validator.validate(token)
+    IdClaimValidator::new(endpoint)
+        .with_nonce(nonce)
+        .validate(token)
 }
 
 /// Check that the `id_token` was issued by the expected provider, for
@@ -268,7 +274,7 @@ fn validate_claims(
     claims: &IdClaims,
     client_id: &str,
     expected_issuer: Option<&str>,
-    nonce: Option<&str>,
+    nonce: Option<&Nonce>,
     now: jiff::Timestamp,
 ) -> Result<(), OIDCTokenError> {
     if let Some(expected) = expected_issuer
@@ -307,9 +313,14 @@ fn validate_claims(
         return Err(OIDCTokenError::TokenExpired);
     }
 
-    if nonce.is_some() && claims.nonce.as_deref() != nonce {
+    if !nonce.is_none_or(|n| {
+        claims
+            .nonce
+            .as_deref()
+            .is_some_and(|recieved| n.verify(recieved))
+    }) {
         return Err(OIDCTokenError::NonceMismatch {
-            expected: nonce.unwrap_or_default().to_owned(),
+            expected: nonce.map(|n| n.revealed()).unwrap_or_default().to_owned(),
             actual: claims.nonce.clone().unwrap_or_default(),
         });
     }
@@ -420,7 +431,7 @@ mod tests {
     fn ve<P: Serialize>(
         payload: P,
         issuer: Option<&str>,
-        nonce: Option<&str>,
+        nonce: Option<&Nonce>,
         key: &rsa::pkcs1v15::SigningKey<sha2::Sha256>,
     ) -> Result<IdClaims, OIDCTokenError> {
         validate(&jwt(payload, key), &endpoint(issuer, key), nonce)

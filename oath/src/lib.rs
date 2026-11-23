@@ -134,6 +134,7 @@ pub mod endpoint;
 pub mod error;
 pub mod grant;
 pub mod identity;
+pub mod nonce;
 pub mod pkce;
 pub mod provider;
 pub mod scope;

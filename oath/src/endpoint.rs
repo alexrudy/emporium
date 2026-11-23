@@ -76,6 +76,7 @@ struct Inner {
     redirect_uri: Option<Uri>,
     issuer: Option<String>,
     iss_parameter_supported: bool,
+    validate_nonce: bool,
     auth_style: ClientAuthStyle,
     keys: Option<JwkSet<PublicWebKey>>,
     transport: SharedClientService<Body, Body>,
@@ -92,6 +93,7 @@ impl fmt::Debug for Inner {
             .field("redirect_uri", &self.redirect_uri)
             .field("issuer", &self.issuer)
             .field("iss_parameter_supported", &self.iss_parameter_supported)
+            .field("validate_nonce", &self.validate_nonce)
             .field("auth_style", &self.auth_style)
             .field("keys", &self.keys)
             .finish_non_exhaustive()
@@ -162,6 +164,11 @@ impl TokenEndpoint {
     /// The set of public JWK keys used to verify tokens.
     pub fn keys(&self) -> Option<&JwkSet<PublicWebKey>> {
         self.inner.keys.as_ref()
+    }
+
+    /// Whether the provider requires nonce validation.
+    pub fn validate_nonce(&self) -> bool {
+        self.inner.validate_nonce
     }
 
     /// Exchange a grant for a token response.
@@ -330,6 +337,7 @@ pub struct TokenEndpointBuilder {
     redirect_uri: Option<Uri>,
     issuer: Option<String>,
     iss_parameter_supported: bool,
+    validate_nonce: bool,
     auth_style: ClientAuthStyle,
     keys: Option<JwkSet<PublicWebKey>>,
     transport: Option<SharedClientService<Body, Body>>,
@@ -346,6 +354,7 @@ impl fmt::Debug for TokenEndpointBuilder {
             .field("redirect_uri", &self.redirect_uri)
             .field("issuer", &self.issuer)
             .field("iss_parameter_supported", &self.iss_parameter_supported)
+            .field("validate_nonce", &self.validate_nonce)
             .field("auth_style", &self.auth_style)
             .field("keys", &self.keys)
             .finish_non_exhaustive()
@@ -392,6 +401,12 @@ impl TokenEndpointBuilder {
         self
     }
 
+    /// Optional: whether the provider requires nonce validation.
+    pub fn validate_nonce(mut self, validate_nonce: bool) -> Self {
+        self.validate_nonce = validate_nonce;
+        self
+    }
+
     /// Populate `auth_uri`, `token_uri`, `device_uri`, `issuer`, and RFC
     /// 9207 support from a [`crate::discovery::ProviderMetadata`]
     /// document.
@@ -414,6 +429,7 @@ impl TokenEndpointBuilder {
         }
         self.issuer = Some(metadata.issuer.clone());
         self.iss_parameter_supported = metadata.authorization_response_iss_parameter_supported;
+        self.validate_nonce = metadata.supports_id_token();
         Ok(self)
     }
 
@@ -486,6 +502,7 @@ impl TokenEndpointBuilder {
                 redirect_uri: self.redirect_uri,
                 issuer: self.issuer,
                 iss_parameter_supported: self.iss_parameter_supported,
+                validate_nonce: self.validate_nonce,
                 auth_style: self.auth_style,
                 keys: self.keys,
                 transport,

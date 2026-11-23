@@ -2,6 +2,7 @@
 
 use std::{borrow::Cow, env::VarError, fmt, ops::Deref};
 
+use ctutils::CtEq;
 use http::{HeaderValue, header::InvalidHeaderValue};
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
@@ -28,6 +29,12 @@ impl Drop for Secret {
         if let Cow::Owned(ref mut s) = self.0 {
             s.zeroize()
         }
+    }
+}
+
+impl CtEq for Secret {
+    fn ct_eq(&self, other: &Self) -> ctutils::Choice {
+        self.0.as_bytes().ct_eq(other.0.as_bytes())
     }
 }
 

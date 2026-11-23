@@ -88,6 +88,9 @@ where
 {
     let mut auth_uri =
         AuthorizationUrl::new(provider.endpoint()).scopes(provider.effective_scopes(&state.config));
+    if provider.validate_nonce() {
+        auth_uri = auth_uri.with_nonce();
+    }
 
     // With an origin extractor, the redirect URI is always this
     // provider's callback route on the request's public host. Otherwise
@@ -205,6 +208,8 @@ where
         });
     }
 
+    let nonce = pending.nonce.clone();
+
     let mut token_set = pending
         .complete(provider.endpoint(), &auth_state, auth_code)
         .await?;
@@ -212,7 +217,8 @@ where
     // OIDC providers return an id_token; make sure it's from this
     // provider and for this client before the app's resolver sees it.
     let id_claims = if let Some(claims) = token_set.id_token.as_deref() {
-        let mut validator = IdClaimValidator::new(provider.endpoint());
+        let mut validator = IdClaimValidator::new(provider.endpoint()).with_nonce(nonce.as_ref());
+
         if provider.expected_issuer().is_none() {
             validator = validator.ignore_issuer();
         };

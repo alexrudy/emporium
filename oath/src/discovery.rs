@@ -221,6 +221,14 @@ impl ProviderMetadata {
     pub fn userinfo_uri(&self) -> Result<Option<Uri>, Error> {
         opt_uri(&self.userinfo_endpoint, "userinfo_endpoint")
     }
+
+    /// Returns `true` if the provider supports ID tokens in any of the response types.
+    pub fn supports_id_token(&self) -> bool {
+        self.response_types_supported
+            .iter()
+            .flat_map(|response| response.split_whitespace())
+            .any(|t| t == "id_token")
+    }
 }
 
 fn parse_uri(raw: &str, field: &'static str) -> Result<Uri, Error> {

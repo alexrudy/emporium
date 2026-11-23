@@ -336,6 +336,11 @@ impl Provider {
     pub(crate) fn effective_scopes(&self, config: &OAuth2RouterConfig) -> ScopeSet {
         self.scopes.clone().unwrap_or_else(|| config.scopes.clone())
     }
+
+    /// Whether to validate ID tokens' `nonce` claim.
+    pub(crate) fn validate_nonce(&self) -> bool {
+        self.endpoint.validate_nonce()
+    }
 }
 
 #[cfg(test)]

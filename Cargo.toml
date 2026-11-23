@@ -39,6 +39,7 @@ chrono = { version = "0.4", features = [] }
 chrono-tz = "0.10.4"
 config = { version = "0.15.19", features = ["toml", "json"] }
 clap = { version = "4.6.1", features = ["derive"] }
+ctutils = "0.4"
 dashmap = "6"
 data-encoding = "2.10.0"
 eyre = "0.6"

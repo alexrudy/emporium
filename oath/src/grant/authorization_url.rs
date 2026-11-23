@@ -6,6 +6,7 @@ use http::Uri;
 use crate::endpoint::TokenEndpoint;
 use crate::error::Error;
 use crate::grant::pending::PendingAuthorization;
+use crate::nonce::Nonce;
 use crate::pkce::{PkceMethod, PkceVerifier};
 use crate::scope::{Scope, ScopeSet};
 use crate::state::StateToken;
@@ -20,6 +21,7 @@ pub struct AuthorizationUrl<'a> {
     endpoint: &'a TokenEndpoint,
     scopes: ScopeSet,
     state: Option<StateToken>,
+    nonce: Option<Nonce>,
     verifier: Option<PkceVerifier>,
     pkce_method: PkceMethod,
     extra: Vec<(String, String)>,
@@ -33,6 +35,7 @@ impl<'a> AuthorizationUrl<'a> {
             endpoint,
             scopes: ScopeSet::new(),
             state: None,
+            nonce: None,
             verifier: None,
             pkce_method: PkceMethod::S256,
             extra: Vec::new(),
@@ -75,6 +78,18 @@ impl<'a> AuthorizationUrl<'a> {
     /// Remove the redirect URI (falling back to the token endpoint).
     pub fn without_redirect(mut self) -> Self {
         self.redirect = None;
+        self
+    }
+
+    /// Remove the nonce (if one was set).
+    pub fn without_nonce(mut self) -> Self {
+        self.nonce = None;
+        self
+    }
+
+    /// Set the nonce to use for this authorization URL.
+    pub fn with_nonce(mut self) -> Self {
+        self.nonce = Some(Nonce::generate());
         self
     }
 
@@ -124,6 +139,9 @@ impl<'a> AuthorizationUrl<'a> {
             params.push(("redirect_uri", redirect.to_string()));
         }
         params.push(("state", state.revealed().to_owned()));
+        if let Some(nonce) = &self.nonce {
+            params.push(("nonce", nonce.revealed().to_owned()));
+        }
         params.push(("code_challenge", challenge.value));
         params.push(("code_challenge_method", challenge.method.to_string()));
         for (k, v) in &self.extra {
@@ -138,6 +156,7 @@ impl<'a> AuthorizationUrl<'a> {
             url,
             PendingAuthorization {
                 state,
+                nonce: self.nonce.clone(),
                 verifier,
                 redirect_uri,
             },

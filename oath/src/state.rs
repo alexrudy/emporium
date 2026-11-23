@@ -7,6 +7,7 @@
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use jaws::crypto::p521::elliptic_curve::subtle::ConstantTimeEq;
 use rand::TryRng as _;
 use rand::rngs::SysRng;
 use secret::Secret;
@@ -50,24 +51,12 @@ impl StateToken {
     /// Constant-time compare against a value returned by the
     /// authorization server. Returns `true` if they match.
     pub fn verify(&self, returned: &str) -> bool {
-        ct_eq(self.0.revealed().as_bytes(), returned.as_bytes())
+        self.0
+            .revealed()
+            .as_bytes()
+            .ct_eq(returned.as_bytes())
+            .into()
     }
-}
-
-/// Constant-time byte-slice equality.
-///
-/// Length differences are revealed (and they're typically observable
-/// anyway in HTTP frames). Beyond that, the comparison is constant-time
-/// to avoid leaking partial matches via timing.
-fn ct_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    let mut diff: u8 = 0;
-    for (x, y) in a.iter().zip(b.iter()) {
-        diff |= x ^ y;
-    }
-    diff == 0
 }
 
 #[cfg(test)]
@@ -110,14 +99,5 @@ mod tests {
     fn verify_rejects_empty() {
         let s = StateToken::generate();
         assert!(!s.verify(""));
-    }
-
-    #[test]
-    fn ct_eq_basic_cases() {
-        assert!(ct_eq(b"", b""));
-        assert!(ct_eq(b"abc", b"abc"));
-        assert!(!ct_eq(b"abc", b"abd"));
-        assert!(!ct_eq(b"abc", b"abcd"));
-        assert!(!ct_eq(b"abcd", b"abc"));
     }
 }
